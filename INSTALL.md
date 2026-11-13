@@ -7,7 +7,9 @@ A Windows companion application for the tvtLobby addon in Arma Reforger Workbenc
 1. Download `tvtLobby-MissionEditor-<version>.zip` from **Releases → Assets**.
 2. Open a saved world in your mission addon with tvtLobby enabled as a dependency. Select **tvtLobby Mission Editor** in the toolbar or **Plugins → tvtLobby: Mission Editor**.
 3. Choose **Open install folder** and extract the `tvtLobby-MissionEditor` folder from the ZIP into the folder that opens. Use **Copy install path** if you need to open the location manually. The executable should be at `profile\tvtLobby-MissionEditor\bin\tvtLobby.MissionEditor.exe`.
-4. Select **Mission Editor** again. If prompted to enable Net API, open **File → Options → General → Net API** in Workbench, enable it on port **5775**, and select **Refresh** in Mission Editor.
+4. Select **Mission Editor** again. If prompted, open **File → Options → General → Net API** in the main Workbench window, select **Enabled**, keep **Port** at **5775**, and click **OK**. Then select **Refresh** in Mission Editor.
+
+Mission Editor connects to Workbench on the same PC at 127.0.0.1. You do not need to change Windows Firewall settings or forward a port on your router. If you use a different Net API port, enter that same port in the Mission Editor plug-in settings.
 
 If Workbench prepares a session and reports a launch error, keep Workbench open and run `bin\tvtLobby.MissionEditor.exe` from the installed folder.
 
