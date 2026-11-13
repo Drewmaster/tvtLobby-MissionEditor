@@ -1,23 +1,17 @@
 # tvtLobby Mission Editor
 
-A Windows companion application for the tvtLobby addon in Arma Reforger Workbench. It edits the open mission through the Workbench Net API on `127.0.0.1` and saves mission data to your addon.
+Use Mission Editor to set up and edit your tvtLobby missions in Arma Reforger Workbench.
 
-See the [installation guide](INSTALL.md) for the Workbench setup and download instructions.
+**[Download Mission Editor 1.0.5 (ZIP)](https://github.com/Drewmaster/tvtLobby-MissionEditor/releases/download/v1.0.5/tvtLobby-MissionEditor-1.0.5.zip)**
 
-## Build from source
+## Install
 
-On Windows, run [Build.ps1](Build.ps1) in PowerShell to build `bin\tvtLobby.MissionEditor.exe` with the .NET Framework C# compiler. The tvtLobby addon provides the Workbench integration and mission templates. To create the installation ZIP, run [Package.ps1](Package.ps1) from PowerShell 7:
+1. Open your saved mission in Workbench with **tvtLobby** enabled as a dependency.
+2. Click **tvtLobby Mission Editor** in the World Editor toolbar. In the dialog, click **Open install folder**.
+3. Extract the **tvtLobby-MissionEditor** folder from the ZIP into the folder that opens.
+4. In the main Workbench window, go to **File → Options → General → Net API**. Turn on **Enabled**, leave **Port** at **5775**, and click **OK**.
+5. Click **tvtLobby Mission Editor** again. If the editor is already open, click **Refresh**.
 
-```powershell
-.\Package.ps1 -OutputDirectory "$env:TEMP\tvtLobby-MissionEditor"
-```
+Workbench and Mission Editor connect on the same PC. Your default firewall and router settings are sufficient.
 
-[GitHub Actions](.github/workflows/release.yml) runs that build on a version tag. Each release links to its source commit and build log and lists the ZIP's SHA-256. To verify the download, compare the release's hash with the output of:
-
-```powershell
-Get-FileHash -Algorithm SHA256 .\tvtLobby-MissionEditor-1.0.5.zip
-```
-
-Public builds also have a [GitHub artifact attestation](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations). To verify which repository and build produced the ZIP, use `gh attestation verify <path-to-zip> --repo <owner>/<repository>`.
-
-The package includes Microsoft's [DirectXTex texture converter](https://github.com/microsoft/DirectXTex/releases/tag/may2026) for map images. Its [MIT license](vendor/DirectXTex/LICENSE) and [source and SHA-256](vendor/DirectXTex/source.json) accompany it.
+[Installation help](INSTALL.md) · [All releases](https://github.com/Drewmaster/tvtLobby-MissionEditor/releases) · [Developer notes](DEVELOPMENT.md)

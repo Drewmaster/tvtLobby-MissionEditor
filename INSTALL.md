@@ -1,18 +1,19 @@
-# tvtLobby Mission Editor
+# Install tvtLobby Mission Editor
 
-A Windows companion application for the tvtLobby addon in Arma Reforger Workbench. It edits the open mission through the Workbench Net API on `127.0.0.1` and saves mission data to your addon.
+Download the Mission Editor ZIP from [GitHub Releases](https://github.com/Drewmaster/tvtLobby-MissionEditor/releases/latest).
 
-## Install
+1. Open your saved mission in Workbench with **tvtLobby** enabled as a dependency.
+2. Click **tvtLobby Mission Editor** in the World Editor toolbar or select **Plugins → tvtLobby: Mission Editor**. In the dialog, click **Open install folder**.
+3. Extract the **tvtLobby-MissionEditor** folder from the ZIP into the folder that opens. If the folder does not open, click **Copy install path** and paste the path into File Explorer. The application should be at `profile\tvtLobby-MissionEditor\bin\tvtLobby.MissionEditor.exe`.
+4. In the main Workbench window, go to **File → Options → General → Net API**. Turn on **Enabled**, leave **Port** at **5775**, and click **OK**.
+5. Click **tvtLobby Mission Editor** again. If the editor is already open, click **Refresh**.
 
-1. Download `tvtLobby-MissionEditor-<version>.zip` from **Releases → Assets**.
-2. Open a saved world in your mission addon with tvtLobby enabled as a dependency. Select **tvtLobby Mission Editor** in the toolbar or **Plugins → tvtLobby: Mission Editor**.
-3. Choose **Open install folder** and extract the `tvtLobby-MissionEditor` folder from the ZIP into the folder that opens. Use **Copy install path** if you need to open the location manually. The executable should be at `profile\tvtLobby-MissionEditor\bin\tvtLobby.MissionEditor.exe`.
-4. Select **Mission Editor** again. If prompted, open **File → Options → General → Net API** in the main Workbench window, select **Enabled**, keep **Port** at **5775**, and click **OK**. Then select **Refresh** in Mission Editor.
+Workbench and Mission Editor connect on the same PC. Your default firewall and router settings are sufficient. If you use a custom port, enter the same number in the Mission Editor plug-in settings.
 
-Mission Editor connects to Workbench on the same PC at 127.0.0.1. You do not need to change Windows Firewall settings or forward a port on your router. If you use a different Net API port, enter that same port in the Mission Editor plug-in settings.
+If Workbench reports that it prepared a session but could not start the editor, keep Workbench open and double-click `bin\tvtLobby.MissionEditor.exe` in the installed folder.
 
-If Workbench prepares a session and reports a launch error, keep Workbench open and run `bin\tvtLobby.MissionEditor.exe` from the installed folder.
+## Update
 
-To update, close Mission Editor and replace the installed `tvtLobby-MissionEditor` folder. Restart Workbench after updating the addon. Mission files and local drafts live separately. Workbench checks the protocol in `package.json`, so a compatible editor package can serve multiple Workshop releases.
+Close Mission Editor and replace its installed **tvtLobby-MissionEditor** folder with the one from the new ZIP. Restart Workbench after updating the tvtLobby addon. Your missions and drafts are stored separately.
 
-The package includes Microsoft's DirectXTex texture converter for map images. See [its license](vendor/DirectXTex/LICENSE) and [download source and SHA-256](vendor/DirectXTex/source.json).
+The ZIP includes Microsoft's DirectXTex texture converter. [License](vendor/DirectXTex/LICENSE) · [Source and checksum](vendor/DirectXTex/source.json)
