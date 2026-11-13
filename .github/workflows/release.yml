@@ -1,0 +1,66 @@
+name: Build and release Mission Editor
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mission-editor-${{ github.ref }}
+
+jobs:
+  release:
+    if: github.event.deleted == false
+    runs-on: windows-2022
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Check out the tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build and package Mission Editor
+        id: package
+        shell: pwsh
+        run: |
+          $archive = & ./Package.ps1 -OutputDirectory $env:RUNNER_TEMP -Tag $env:GITHUB_REF_NAME
+          "archive=$archive" >> $env:GITHUB_OUTPUT
+
+      - name: Attest the installation ZIP
+        if: github.event.repository.private == false
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ steps.package.outputs.archive }}
+
+      - name: Publish the versioned ZIP
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+        run: |
+          $asset = Split-Path -Leaf $env:ARCHIVE
+          $tag = $env:GITHUB_REF_NAME
+          $digest = (Get-FileHash -LiteralPath $env:ARCHIVE -Algorithm SHA256).Hash.ToLowerInvariant()
+          $commit = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Could not resolve the source commit.' }
+          $source = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/tree/$commit"
+          $run = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          $notes = @(
+              "Download $asset and follow its README to install the editor."
+              ""
+              "[Source at this release]($source) and [build log]($run)"
+              ""
+              "SHA-256 for $asset"
+              ""
+              "    $digest"
+          ) -join [Environment]::NewLine
+          gh release create $tag $env:ARCHIVE --verify-tag --title "Mission Editor $tag" --generate-notes --notes $notes
+          if ($LASTEXITCODE -ne 0) { throw "Could not publish $tag. Check the existing Releases and rerun the job if needed." }
