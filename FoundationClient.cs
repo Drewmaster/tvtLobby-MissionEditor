@@ -247,8 +247,8 @@ namespace TvtLobby.MissionEditor
                 case "freezezones_apply":return view.FreezeZones;
                 case "end_apply":return view.MissionEnd;
                 case "objective_apply":case "objective_remove":if(view.Objectives!=null)view.Objectives.Normalize();return view.Objectives;
-                case "brief_apply":case "brief_remove":case "brief_up":case "brief_down":case "brief_move":if(view.Briefing!=null)view.Briefing.Normalize();return view.Briefing;
-                case "group_update":case "group_move":case "faction_update":return view.Forces;
+                case "brief_batch":case "brief_apply":case "brief_remove":case "brief_up":case "brief_down":case "brief_move":if(view.Briefing!=null)view.Briefing.Normalize();return view.Briefing;
+                case "group_batch":case "group_update":case "group_move":case "group_order":case "faction_update":return view.Forces;
                 case "save":return new object[]{view.Details,view.Forces,view.Settings,view.Advanced,view.FreezeZones,view.MissionEnd,view.Objectives,view.Briefing};
                 default:return null;
             }

@@ -10,8 +10,8 @@ using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
-[assembly: AssemblyFileVersion("1.0.5.0")]
-[assembly: AssemblyInformationalVersion("1.0.5")]
+[assembly: AssemblyFileVersion("1.0.7.0")]
+[assembly: AssemblyInformationalVersion("1.0.7")]
 
 namespace TvtLobby.MissionEditor
 {
@@ -51,8 +51,8 @@ namespace TvtLobby.MissionEditor
     // The official Workbench NET API framing: little-endian Int32 + UTF-8 byte strings.
     public sealed class WorkbenchClient
     {
-        public const int EditorProtocol = 1;
-        public const string CompatibilityError = "This Mission Editor ZIP is incompatible with the scripts loaded in Workbench. Open tvtLobby 1.0.5 with the matching editor ZIP, then reopen Mission Editor.";
+        public const int EditorProtocol = 2;
+        public const string CompatibilityError = "This Mission Editor ZIP is incompatible with the scripts loaded in Workbench. Update the tvtLobby addon and install the matching Mission Editor ZIP from GitHub Releases, then restart Workbench and reopen Mission Editor.";
         private readonly Session session;
         public WorkbenchClient(Session value) { session = value; }
         public Reply Execute(string operation, Reply view, GroupRow row)

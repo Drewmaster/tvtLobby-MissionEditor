@@ -195,7 +195,7 @@ namespace TvtLobby.MissionEditor
                 FoundationReply result=await Task.Run(()=>client.Execute(operation,view,null,edit));
                 if(IsDisposed)return result;
                 if(result.Ok!=1){status.Text=result.Message+" ["+result.Code+"]";return result;}
-                if(operation.StartsWith("faction_"))factionsPage.Applied(edit.Key);else groupsPage.Applied(operation);
+                if(operation.StartsWith("faction_"))factionsPage.Applied(edit.Key);else groupsPage.Applied(operation,result.Forces);
                 AcceptSnapshot(result,false);status.Text=result.Message;
                 return result;
             }

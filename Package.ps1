@@ -35,6 +35,7 @@ try {
         Set-Content -LiteralPath (Join-Path $package 'package.json') -Encoding ascii
 
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'INSTALL.md') -Destination (Join-Path $package 'README.md')
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'CHANGELOG.md') -Destination $package
     $license = Join-Path $PSScriptRoot 'LICENSE'
     if (Test-Path -LiteralPath $license -PathType Leaf) {
         Copy-Item -LiteralPath $license -Destination $package

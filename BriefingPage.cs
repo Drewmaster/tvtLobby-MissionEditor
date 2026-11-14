@@ -23,14 +23,14 @@ namespace TvtLobby.MissionEditor
         readonly Func<string,BriefingEdit,Task<FoundationReply>> send;
         readonly Panel listHost=new Panel(),detail=new Panel();
         readonly Label status=EditorTheme.Label("",9,EditorTheme.Muted);
-        readonly EditorButton add=new EditorButton{Text="+ Add section",Primary=true},apply=new EditorButton{Text="Apply section",Primary=true},reload=new EditorButton{Text="Reload fields"},remove=new EditorButton{Text="Remove"},duplicate=new EditorButton{Text="Duplicate"},up=new EditorButton{Text="↑",Width=40},down=new EditorButton{Text="↓",Width=40};
-        BriefingData data;BriefingEdit draft;string world="",baseline="",source="",root="";bool conflict,applying;
+        readonly EditorButton add=new EditorButton{Text="+ Add section",Primary=true},apply=new EditorButton{Text="Apply briefing",Primary=true},reload=new EditorButton{Text="Discard changes"},remove=new EditorButton{Text="Remove"},duplicate=new EditorButton{Text="Duplicate"},up=new EditorButton{Text="↑",Width=40},down=new EditorButton{Text="↓",Width=40};
+        BriefingData data,latest;BriefingEdit draft;string world="",baseline="",source="",root="";bool conflict,applying;
         const string SectionDragFormat="tvtLobby.MissionEditor.BriefingSection";
         Point dragOrigin;string dragId;bool suppressClick;int scrollAt;BriefingSectionButton dropButton;
         public event Action DraftChanged;
-        public bool HasDraft{get{return draft!=null&&draft.Serialize()!=baseline;}}
-        public string DraftError{get{return conflict?"Briefing changed in Workbench. Reload fields first.":draft==null?"Select a briefing section.":draft.Validate();}}
-        public async Task<bool> ApplyPending(){if(DraftError!=null)return false;await Save("brief_apply");return !HasDraft;}
+        public bool HasDraft{get{return data!=null&&SectionsStamp(data)!=baseline;}}
+        public string DraftError{get{return !HasDraft?null:conflict?"Briefing changed in Workbench. Discard changes to reload it.":!String.IsNullOrEmpty(data.Problem)?data.Problem:data.BatchVersion<1?"Restart Workbench with updated tvtLobby scripts to apply the full briefing.":ReadBatch().Validate();}}
+        public async Task<bool> ApplyPending(){if(!HasDraft)return true;return await Save();}
         public BriefingPage(Func<string,BriefingEdit,Task<FoundationReply>> action)
         {
             send=action;Dock=DockStyle.Fill;BackColor=EditorTheme.Background;ForeColor=EditorTheme.Text;Font=EditorTheme.Font();
@@ -38,40 +38,67 @@ namespace TvtLobby.MissionEditor
             var bar=new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.RightToLeft};bar.Controls.Add(add);frame.Controls.Add(bar);
             var body=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=1,CellBorderStyle=TableLayoutPanelCellBorderStyle.Single,Margin=Padding.Empty};body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,27));body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,73));listHost.Dock=detail.Dock=DockStyle.Fill;listHost.Padding=new Padding(12);detail.Padding=new Padding(18,12,0,0);body.Controls.Add(listHost);body.Controls.Add(detail);frame.Controls.Add(body,0,1);
             var footer=EditorTheme.Stack();var buttons=new FlowLayoutPanel{AutoSize=true,Dock=DockStyle.Top};buttons.Controls.AddRange(new Control[]{apply,reload,duplicate,remove,up,down});EditorTheme.Add(footer,buttons);EditorTheme.Add(footer,status);frame.Controls.Add(footer,0,2);Controls.Add(frame);
-            add.Click+=(s,e)=>Create(false);duplicate.Click+=(s,e)=>Create(true);reload.Click+=(s,e)=>Select(draft==null?0:draft.Index);apply.Click+=async(s,e)=>await Save("brief_apply");remove.Click+=async(s,e)=>{if(MessageBox.Show(this,"Remove this section? Sections linked from another section must be unlinked first.","Remove section",MessageBoxButtons.OKCancel)==DialogResult.OK)await Save("brief_remove");};up.Click+=async(s,e)=>{if(draft!=null)await MoveSection(draft.Index,draft.Index-1);};down.Click+=async(s,e)=>{if(draft!=null)await MoveSection(draft.Index,draft.Index+1);};State();
+            add.Click+=(s,e)=>Create(false);duplicate.Click+=(s,e)=>Create(true);reload.Click+=(s,e)=>DiscardChanges();apply.Click+=async(s,e)=>await Save();remove.Click+=(s,e)=>RemoveSection();up.Click+=(s,e)=>{if(draft!=null)MoveSection(draft.Index,draft.Index-1);};down.Click+=(s,e)=>{if(draft!=null)MoveSection(draft.Index,draft.Index+1);};State();
         }
         public void Accept(FoundationReply reply,bool replace)
         {
             bool changedWorld=world!=reply.WorldSession;world=reply.WorldSession;root=reply.AddonRoot;var incoming=reply.Briefing;if(incoming!=null)incoming.Normalize();
-            if(!replace&&!changedWorld&&HasDraft&&incoming!=null&&incoming.Serialize()!=source)conflict=true;
-            data=incoming;
-            if(replace||changedWorld||!HasDraft){string id=draft==null?"":draft.Definition.Text("Id");int index=data==null?-1:data.Sections.FindIndex(n=>n.Text("Id")==id);Select(index>=0?index:0);}else State();
+            latest=incoming==null?null:incoming.Clone();
+            if(replace||changedWorld||!HasDraft)LoadSnapshot(latest);
+            else
+            {
+                if(incoming==null||ContentStamp(incoming)!=source)conflict=true;
+                if(incoming!=null){data.BatchVersion=incoming.BatchVersion;data.Problem=incoming.Problem;}
+                State();
+            }
         }
         public BriefingEdit ReadFields(){return draft==null?null:draft.Clone();}
-        public bool CanLeave(){return !HasDraft||MessageBox.Show(this,"Discard unapplied briefing changes?","Unapplied briefing",MessageBoxButtons.OKCancel)==DialogResult.OK;}
-        public void Applied(){if(draft!=null)baseline=draft.Serialize();conflict=false;}
-        void Select(int index){draft=data==null||index<0||index>=data.Sections.Count?null:new BriefingEdit{Index=index,Definition=data.Sections[index].Clone()};baseline=draft==null?"":draft.Serialize();source=data==null?"":data.Serialize();conflict=false;Display();Changed();}
-        void Changed(){State();if(DraftChanged!=null)DraftChanged();}
+        public BriefingEdit ReadBatch(){return data==null?null:new BriefingEdit{BatchVersion=1,Sections=data.Sections.Select(n=>n.Clone()).ToList()};}
+        public bool CanLeave(){if(!HasDraft)return true;if(MessageBox.Show(this,"Discard all unapplied briefing changes?","Unapplied briefing",MessageBoxButtons.OKCancel)!=DialogResult.OK)return false;DiscardChanges();return true;}
+        public void Applied(){baseline=data==null?"":SectionsStamp(data);conflict=false;}
+        static string SectionsStamp(BriefingData value){return EditorJson.Serialize(value.Sections);}
+        static string ContentStamp(BriefingData value){return EditorJson.Serialize(new {value.Version,value.Sections,value.Schemas,value.Targets,value.Subjects,value.Objectives});}
+        void LoadSnapshot(BriefingData incoming)
+        {
+            string id=draft==null?"":draft.Definition.Text("Id");data=incoming==null?null:incoming.Clone();
+            baseline=data==null?"":SectionsStamp(data);source=data==null?"":ContentStamp(data);conflict=false;
+            int index=data==null?-1:data.Sections.FindIndex(n=>n.Text("Id")==id);Select(index>=0?index:0);
+        }
+        void DiscardChanges(){LoadSnapshot(latest);}
+        void Select(int index){draft=data==null||index<0||index>=data.Sections.Count?null:new BriefingEdit{Index=index,Definition=data.Sections[index]};Display();Changed();}
+        void Changed()
+        {
+            if(data!=null&&listHost.Controls.Count>0)
+            {
+                var list=listHost.Controls[0] as ObjectiveScroll;
+                if(list!=null)foreach(var row in list.Body.Controls.OfType<BriefingSectionButton>())
+                {
+                    var section=data.Sections.FirstOrDefault(n=>row.Name=="BriefingSection:"+n.Text("Id"));
+                    if(section!=null){row.Text=section.Text("Title");row.Detail=PhaseLabel(section)+"\n"+(section.Text("Audience")=="0"?"All players":"Restricted audience");row.Invalidate();}
+                }
+            }
+            State();if(DraftChanged!=null)DraftChanged();
+        }
         void State()
         {
             bool ready=data!=null&&data.Version==1&&String.IsNullOrEmpty(data.Problem)&&!applying;
-            add.Enabled=ready;apply.Enabled=ready&&HasDraft&&!conflict;reload.Enabled=draft!=null&&!applying;duplicate.Enabled=ready&&draft!=null&&!conflict;remove.Enabled=ready&&draft!=null&&draft.Index>=0&&!conflict&&!HasDraft;up.Enabled=remove.Enabled&&draft.Index>0;down.Enabled=remove.Enabled&&draft.Index<data.Sections.Count-1;
-            status.Text=data==null?"Restart Workbench to load the Briefing editor.":!String.IsNullOrEmpty(data.Problem)?data.Problem:conflict?"Workbench changed. Draft retained; Reload fields before applying.":HasDraft?"Unapplied section. Apply or reload fields before reordering, then Save mission.":"Manual briefing · native Undo per edit · stable section links.";
+            add.Enabled=ready&&!conflict&&data.Sections.Count<64;apply.Enabled=ready&&HasDraft&&!conflict&&data.BatchVersion>=1;reload.Enabled=(HasDraft||conflict)&&!applying;duplicate.Enabled=add.Enabled&&draft!=null;remove.Enabled=ready&&draft!=null&&!conflict;up.Enabled=remove.Enabled&&draft.Index>0;down.Enabled=remove.Enabled&&draft.Index<data.Sections.Count-1;
+            status.Text=data==null?"Restart Workbench to load the Briefing editor.":!String.IsNullOrEmpty(data.Problem)?data.Problem:DraftError??(HasDraft?"Unapplied briefing changes. Add, edit and reorder sections, then Apply briefing once.":"Changes stay local until Apply briefing. Save mission writes them to disk.");
         }
         void Display()
         {
             foreach(Control c in listHost.Controls.Cast<Control>().ToArray())c.Dispose();foreach(Control c in detail.Controls.Cast<Control>().ToArray())c.Dispose();
             if(data==null)return;var list=new ObjectiveScroll();listHost.Controls.Add(list);
             EditorTheme.Add(list.Body,EditorTheme.Label("Drag sections to reorder.\nTop section appears first in game.",9,EditorTheme.Muted));
-            for(int i=0;i<data.Sections.Count;i++){int selected=i;var n=data.Sections[i];var b=new BriefingSectionButton{Name="BriefingSection:"+n.Text("Id"),Text=n.Text("Title"),Detail=PhaseLabel(n)+"\n"+(n.Text("Audience")=="0"?"All players":"Restricted audience"),Navigation=true,Selected=draft!=null&&draft.Index==i,Height=87};b.Click+=(s,e)=>{if(!suppressClick&&CanLeave())Select(selected);};EnableDragging(b,n.Text("Id"),list);EditorTheme.Add(list.Body,b);}
+            for(int i=0;i<data.Sections.Count;i++){int selected=i;var n=data.Sections[i];var b=new BriefingSectionButton{Name="BriefingSection:"+n.Text("Id"),Text=n.Text("Title"),Detail=PhaseLabel(n)+"\n"+(n.Text("Audience")=="0"?"All players":"Restricted audience"),Navigation=true,Selected=draft!=null&&draft.Index==i,Height=87};b.Click+=(s,e)=>{if(!suppressClick)Select(selected);};EnableDragging(b,n.Text("Id"),list);EditorTheme.Add(list.Body,b);}
             if(data.Sections.Count==0)EditorTheme.Add(list.Body,EditorTheme.Label("No sections yet. Add only the information this mission needs.",9,EditorTheme.Muted));
-            EditorTheme.Add(list.Body,EditorTheme.Label("Map and section links use saved references. Visibility is checked for each reader.",8.5f,EditorTheme.Muted));list.Fit();
+            EditorTheme.Add(list.Body,EditorTheme.Label("Links can target new sections in this draft. Visibility is checked for each reader.",8.5f,EditorTheme.Muted));list.Fit();
             if(draft==null){var empty=new ObjectiveScroll();detail.Controls.Add(empty);EditorTheme.Add(empty.Body,EditorTheme.Label("Write the mission briefing",17,null,true));EditorTheme.Add(empty.Body,EditorTheme.Label("Add Overview, Situation, Mission, Execution or your own section. Rules are never generated into the text.",10,EditorTheme.Muted));empty.Fit();return;}
             detail.Controls.Add(new BriefingForm(data,draft,root,Changed,GoTo));EditorTheme.Apply(this);
         }
         static string PhaseLabel(TaskNode n){int phases;Int32.TryParse(n.Text("Phases"),out phases);var labels=new List<string>();if((phases&2)!=0)labels.Add("Waiting");if((phases&16)!=0)labels.Add("Briefing");if((phases&32)!=0){if(n.Text("DuringFreeze")=="1")labels.Add("Freeze");if(n.Text("AfterFreeze")=="1")labels.Add("Game");}return n.Text("Enabled")=="0"?"Disabled":String.Join(" · ",labels);}
-        void GoTo(string id){if(CanLeave())Select(data.Sections.FindIndex(s=>s.Text("Id")==id));}
-        bool CanReorder(){return Enabled&&data!=null&&data.Version==1&&String.IsNullOrEmpty(data.Problem)&&!applying&&!conflict&&!HasDraft;}
+        void GoTo(string id){Select(data.Sections.FindIndex(s=>s.Text("Id")==id));}
+        bool CanReorder(){return Enabled&&data!=null&&data.Version==1&&String.IsNullOrEmpty(data.Problem)&&!applying&&!conflict;}
         void ClearDrop()
         {
             if(dropButton!=null&&!dropButton.IsDisposed){dropButton.DropEdge=0;dropButton.Invalidate();}dropButton=null;
@@ -97,30 +124,40 @@ namespace TvtLobby.MissionEditor
                 int now=Environment.TickCount;if(unchecked(now-scrollAt)>=120){var p=list.PointToClient(new Point(e.X,e.Y));if(p.Y<30)list.ScrollY=Math.Max(0,list.ScrollY-35);else if(p.Y>list.Height-30)list.ScrollY+=35;scrollAt=now;}
             };
             row.DragEnter+=over;row.DragOver+=over;row.DragLeave+=(s,e)=>ClearDrop();
-            row.DragDrop+=async(s,e)=>{
+            row.DragDrop+=(s,e)=>{
                 string sourceId=e.Data.GetData(SectionDragFormat) as string;
                 bool after=row.PointToClient(new Point(e.X,e.Y)).Y>=row.Height/2;ClearDrop();
                 if(!CanReorder())return;
                 int from=data.Sections.FindIndex(n=>n.Text("Id")==sourceId),target=data.Sections.FindIndex(n=>n.Text("Id")==id);
                 if(from<0||target<0||from==target)return;int to=target+(after?1:0);if(from<to)to--;
-                await MoveSection(from,to);
+                if(IsHandleCreated)BeginInvoke(new Action(()=>MoveSection(from,to)));else MoveSection(from,to);
             };
         }
-        async Task MoveSection(int from,int to)
+        void MoveSection(int from,int to)
         {
             if(!CanReorder()||from<0||to<0||from>=data.Sections.Count||to>=data.Sections.Count||from==to)return;
-            await Save("brief_move",new BriefingEdit{Index=from,Destination=to,Definition=data.Sections[from].Clone()});
+            var section=data.Sections[from];data.Sections.RemoveAt(from);data.Sections.Insert(to,section);Select(to);
         }
         void Create(bool copy)
         {
-            if(!CanLeave())return;var n=copy?draft.Definition.Clone():data.Make("tvtLobby_BriefSection");string old=n.Text("Id");n.Set("Id",Guid.NewGuid().ToString());n.Set("Title",copy?n.Text("Title")+" — copy":"New section");
+            if(!CanReorder()||data.Sections.Count>=64||copy&&draft==null)return;var n=copy?draft.Definition.Clone():data.Make("tvtLobby_BriefSection");if(n==null)return;string old=n.Text("Id");n.Set("Id",Guid.NewGuid().ToString());n.Set("Title",copy?n.Text("Title")+" — copy":"New section");
             if(copy)foreach(var link in n.Field("Links").Nodes)if(link.Text("Section")==old)link.Set("Section",n.Text("Id"));
-            draft=new BriefingEdit{Definition=n};baseline="";source=data.Serialize();conflict=false;Display();Changed();
+            data.Sections.Add(n);Select(data.Sections.Count-1);
         }
-        async Task Save(string operation,BriefingEdit request=null)
+        void RemoveSection()
         {
-            request=request??draft;string error=request==null?"Select a section.":request.Validate();if(error!=null){status.Text=error;return;}applying=true;State();string message="";
-            try{string id=request.Definition.Text("Id");var r=await send(operation,request.Clone());if(IsDisposed)return;message=r.Message;if(r.Ok==1){data=r.Briefing;data.Normalize();Select(data.Sections.FindIndex(n=>n.Text("Id")==id));}}
+            if(!CanReorder()||draft==null)return;int index=draft.Index;data.Sections.RemoveAt(index);Select(Math.Min(index,data.Sections.Count-1));
+        }
+        async Task<bool> Save()
+        {
+            if(!HasDraft)return true;if(applying)return false;string error=DraftError;if(error!=null){status.Text=error;return false;}applying=true;State();string message="";
+            try
+            {
+                var r=await send("brief_batch",ReadBatch());if(IsDisposed)return false;message=r.Message;
+                if(r.Ok!=1)return false;
+                if(r.Briefing==null){message="Workbench returned no briefing. Draft retained; Refresh before trying again.";return false;}
+                r.Briefing.Normalize();latest=r.Briefing.Clone();LoadSnapshot(latest);return true;
+            }
             finally{applying=false;if(!IsDisposed){State();if(!String.IsNullOrEmpty(message))status.Text=message;}}
         }
     }
@@ -184,7 +221,7 @@ namespace TvtLobby.MissionEditor
         void InsertLink()
         {
             var choices=new List<TaskChoice>();choices.AddRange(data.Targets.Select(x=>Option("map:"+x.Key,x.Label)));choices.AddRange(data.Sections.Where(x=>x.Text("Id")!=Section.Text("Id")).Select(x=>Option("section:"+x.Text("Id"),x.Text("Title")+" · Briefing section")));
-            if(choices.Count==0){MessageBox.Show(this,"Create a zone, marker or another saved section first.");return;}
+            if(choices.Count==0){MessageBox.Show(this,"Create a zone, marker or another section first.");return;}
             var destination=Combo(choices,choices[0].Key,v=>{});var label=new TextBox{Text=String.IsNullOrWhiteSpace(document.SelectedText)?"View location":document.SelectedText};
             string target,caption;
             using(var dialog=new BriefDialog("Insert internal link")){dialog.Add(EditorTheme.Field("Link text",label));dialog.Add(EditorTheme.Field("Destination",destination));dialog.Add(EditorTheme.Label("The reader must also have access to the destination. External URLs are not supported.",9,EditorTheme.Muted));if(dialog.ShowDialog(this)!=DialogResult.OK||String.IsNullOrWhiteSpace(label.Text)||destination.SelectedItem==null)return;target=((TaskChoice)destination.SelectedItem).Key;caption=label.Text;}

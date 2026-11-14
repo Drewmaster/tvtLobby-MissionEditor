@@ -10,6 +10,9 @@ namespace TvtLobby.MissionEditor
         void BuildVanillaSettings()
         {
             var hud=Section("Notifications & HUD");
+            tabs.Group(hud,"Friendly nametags","Names above friendly characters during play. Spectator names are configured separately.");
+            Choice(hud,"FriendlyNametagMode","Friendly names",new[]{"Use mission default","Disabled","Custom distance"},"Mission default preserves the world's native nametag configuration. Custom distance uses vanilla friendly nametags and keeps the native visibility and player/AI filters.");
+            Number(hud,"FriendlyNametagDistance","Maximum distance (m)","1–500 metres. The same limit applies with scopes and binoculars; distant markers are hidden too.",1,500);
             tabs.Group(hud,"Vanilla killfeed","Controls death notices, including those seen in Game Master.");
             Choice(hud,"Killfeed","Killfeed",new[]{"Disabled","Deaths without killer names","Full killfeed"},"Disabled also suppresses the native Game Master exception. Statistics continue to be collected.");
             Choice(hud,"KillfeedAudience","Receive deaths of",new[]{"All players","Enemies","Allies","Own faction","Own group"},"Native audience filter. With killfeed enabled, Game Master retains its native full-feed view.");
@@ -20,7 +23,7 @@ namespace TvtLobby.MissionEditor
             Check(hud,"MembershipFeed","Faction, group and leader-change notices","Routine membership notices only. Requests and action failures remain available.");
             tabs.Group(hud,"Mission messages & HUD");
             Note(hud,"Objective feedback, authored hints, System messages and administrator announcements stay enabled. Freeze, technical pause and battlefield warnings are unaffected by vanilla feed settings.");
-            Note(hud,"Per-type restrictions for authored messages and personal nametag profiles are planned separately. No placeholder switches are applied.");
+            Note(hud,"Per-type restrictions for authored messages and personal nametag profiles are planned separately.");
 
             var permissions=Section("Vanilla systems & permissions");
             tabs.Group(permissions,"Game Master");
@@ -47,6 +50,7 @@ namespace TvtLobby.MissionEditor
         void VanillaState()
         {
             if(!controls.ContainsKey("Killfeed"))return;
+            controls["FriendlyNametagDistance"].Enabled=((ComboBox)controls["FriendlyNametagMode"]).SelectedIndex==2;
             bool feed=((ComboBox)controls["Killfeed"]).SelectedIndex>0;
             controls["KillfeedAudience"].Enabled=feed;controls["FriendlyFeed"].Enabled=feed;
             controls["FriendlyAudience"].Enabled=feed&&((CheckBox)controls["FriendlyFeed"]).Checked;

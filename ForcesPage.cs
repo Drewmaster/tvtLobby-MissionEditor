@@ -29,6 +29,9 @@ namespace TvtLobby.MissionEditor
     public sealed class ForcesView
     {
         public int VehicleAssignmentsVersion {get;set;}
+        public int GroupOrderVersion {get;set;}
+        public int GroupBatchVersion {get;set;}
+        public int GroupOrderEditable {get;set;}
         public int NativeFactionCreationVersion {get;set;}
         public string FactionDirectory {get;set;}
         public List<EditorFaction> Factions {get;set;} public List<EditorFaction> Available {get;set;}
@@ -46,10 +49,12 @@ namespace TvtLobby.MissionEditor
         public string Key {get;set;} public string Name {get;set;} public string Alliance {get;set;}
         public string VehicleKey {get;set;}
         public List<VehicleAssignmentEdit> VehicleAssignments {get;set;}
+        public List<string> GroupOrder {get;set;}
+        public int BatchVersion {get;set;} public int UpdateOrder {get;set;} public int UpdateGroup {get;set;}
         public string BaseKey {get;set;} public string Flag {get;set;}
         public int Red {get;set;} public int Green {get;set;} public int Blue {get;set;}
         public int DefaultName {get;set;} public int Assigned {get;set;} public int Company {get;set;} public int Platoon {get;set;} public int Squad {get;set;} public int Playable {get;set;} public int Delta {get;set;}
-        public ForcesEdit(){DefaultName=1;Playable=1;Name="";Alliance="";VehicleAssignments=new List<VehicleAssignmentEdit>();}
+        public ForcesEdit(){DefaultName=1;Playable=1;Name="";Alliance="";VehicleAssignments=new List<VehicleAssignmentEdit>();GroupOrder=new List<string>();}
     }
     public sealed partial class ForcesPage : UserControl
     {
@@ -66,14 +71,44 @@ namespace TvtLobby.MissionEditor
         readonly Button apply,remove,up,down,select;
         readonly VehiclesPanel vehicles;
         ForcesView data=new ForcesView();string session="",baseline="",selected="";int priorFilter;bool filling,dirty,conflict;
-        public bool HasDraft {get{return dirty||(vehicles!=null&&vehicles.HasDraft);}}
-        public string DraftError{get{return dirty?(conflict?"Group changed in Workbench. Reload its fields first.":String.IsNullOrEmpty(selected)?"Select a group.":null):vehicles==null?null:vehicles.DraftError;}}
+        public bool HasDraft {get{return dirty||HasOrderDraft||(vehicles!=null&&vehicles.HasDraft);}}
+        public string DraftError{get{return (groupMode&&HasDraft&&data.GroupBatchVersion<1?BatchUpdateRequired:null)??(dirty?(conflict?"Group changed in Workbench. Reload its fields first.":String.IsNullOrEmpty(selected)?"Select a group.":null):null)??OrderError??(vehicles==null?null:vehicles.DraftError);}}
+        public ForcesEdit ReadBatch()
+        {
+            var edit=dirty?ReadFields():new ForcesEdit();
+            edit.BatchVersion=1;edit.UpdateGroup=dirty?1:0;edit.UpdateOrder=HasOrderDraft?1:0;
+            edit.GroupOrder=new List<string>(pendingOrder);
+            if(vehicles!=null)edit.VehicleAssignments=vehicles.ReadChanges().VehicleAssignments;
+            return edit;
+        }
         public async Task<bool> ApplyPending()
         {
-            if(dirty){if(conflict||String.IsNullOrEmpty(selected))return false;var result=await send("group_update",ReadFields());if(result.Ok!=1)return false;}
-            return vehicles==null||await vehicles.ApplyPending();
+            if(!HasDraft)return true;
+            if(DraftError!=null||groupMoving)return false;
+            groupMoving=true;UpdateActions();
+            try
+            {
+                var result=await send("group_batch",ReadBatch());
+                if(result.Ok!=1)return false;
+                Applied("group_batch",result.Forces);
+                if(result.Forces!=null)Accept(result,false);
+                return true;
+            }
+            finally{groupMoving=false;if(!IsDisposed)UpdateActions();}
         }
-        public void Applied(string operation){if(operation=="vehicle_batch"&&vehicles!=null)vehicles.Applied();else if(operation=="group_update")DiscardFields();}
+        public void Applied(string operation,ForcesView committed=null)
+        {
+            if(operation=="group_batch")DiscardDraft();
+            else if(operation=="vehicle_batch"&&vehicles!=null)
+            {
+                // Assigning a vehicle can create a group's first stable ID. Keep the
+                // pending key-based order across this successful local transaction.
+                if(HasOrderDraft&&!orderConflict&&committed!=null)orderBaseline=OrderStamp(committed);
+                vehicles.Applied();
+            }
+            else if(operation=="group_update")DiscardFields();
+            else if(operation=="group_order")ClearOrder();
+        }
         public ForcesEdit ReadFields(){return new ForcesEdit{Key=selected,Name=displayName.Text,DefaultName=defaultName.Checked?1:0,Alliance=alliance.Text.Trim(),Playable=playable.Checked?1:0,Assigned=assigned.Checked?1:0,Company=company.SelectedIndex,Platoon=platoon.SelectedIndex,Squad=squad.SelectedIndex};}
         public event Action DraftChanged;
         public ForcesPage(bool groups,Func<string,ForcesEdit,Task<FoundationReply>> callback)
@@ -114,11 +149,11 @@ namespace TvtLobby.MissionEditor
                 Add(layout,TextLabel("The same alliance makes sides friendly and enables alliance audiences. Unrelated pairs retain their configured/native relations. Engine keys and command-side IDs remain unchanged.",10));
             }
             actions.AutoSize=true;actions.Dock=DockStyle.Top;
-            apply=Button(groups?"Apply group":"Apply faction",async()=>await Apply());actions.Controls.Add(apply);
+            apply=Button(groups?"Apply":"Apply faction",async()=>await Apply());if(!groups)actions.Controls.Add(apply);
             actions.Controls.Add(Button("Reload fields",()=>{DiscardFields();LoadSelected();}));
             if(groups)
             {
-                up=Button("Move up",async()=>await MoveGroup(-1));down=Button("Move down",async()=>await MoveGroup(1));select=Button("Select in world",async()=>{if(!String.IsNullOrEmpty(selected))await send("group_select",new ForcesEdit{Key=selected});});actions.Controls.Add(up);actions.Controls.Add(down);actions.Controls.Add(select);
+                up=Button("Move up",()=>MoveGroup(-1));down=Button("Move down",()=>MoveGroup(1));select=Button("Select in world",async()=>{if(!String.IsNullOrEmpty(selected))await send("group_select",new ForcesEdit{Key=selected});});actions.Controls.Add(up);actions.Controls.Add(down);actions.Controls.Add(select);
             }
             else
             {
@@ -126,7 +161,7 @@ namespace TvtLobby.MissionEditor
                 actions.Controls.Add(Button("Create missing faction layers",async()=>{if(!String.IsNullOrEmpty(selected)&&CanLeave())await send("faction_layers",new ForcesEdit{Key=selected});}));
             }
             Add(layout,actions);notice.AutoSize=true;notice.ForeColor=Gold;Add(layout,notice);
-            if(groups){vehicles=new VehiclesPanel(send,SelectVehicleGroup);vehicles.DraftChanged+=()=>{if(DraftChanged!=null)DraftChanged();};Add(layout,vehicles);}
+            if(groups){vehicles=new VehiclesPanel(send,SelectVehicleGroup,true);vehicles.DraftChanged+=()=>{RefreshLinks();UpdateBatchActions();if(DraftChanged!=null)DraftChanged();};Add(layout,vehicles);}
             else Add(layout,TextLabel("Create faction makes a derived native config and connects it to this mission. Existing faction configs are kept intact. Mission display names and alliances can be edited here afterward.",10));
             if(groups){ArrangeGroupPage(layout,top);EnableGroupDragging();}
             EditorTheme.Apply(this);UpdateActions();
@@ -136,14 +171,25 @@ namespace TvtLobby.MissionEditor
         static void StyleCombo(ComboBox c){c.DropDownStyle=ComboBoxStyle.DropDownList;c.BackColor=PanelColor;c.ForeColor=Color.Gainsboro;c.Width=200;}
         static Button Button(string text,Action action){return EditorTheme.Button(text,action,text.StartsWith("Apply"));}
         void Column(string property,string title,int width){grid.Columns.Add(new DataGridViewTextBoxColumn{DataPropertyName=property,HeaderText=title,AutoSizeMode=DataGridViewAutoSizeColumnMode.Fill,FillWeight=width,SortMode=DataGridViewColumnSortMode.NotSortable});}
-        public bool CanLeave(){return CanLeaveFields()&&(vehicles==null||vehicles.CanLeave());}
+        public bool CanLeave()
+        {
+            if(!groupMode)return CanLeaveFields();
+            if(!HasDraft)return true;
+            if(MessageBox.Show(this,"Discard all unapplied group settings, group order and vehicle assignments?","Unapplied groups & vehicles",MessageBoxButtons.OKCancel,MessageBoxIcon.Question)!=DialogResult.OK)return false;
+            DiscardBatch();return true;
+        }
         bool CanLeaveFields(){if(!dirty)return true;if(MessageBox.Show(this,"Discard the unapplied faction/group fields?","Unapplied fields",MessageBoxButtons.OKCancel,MessageBoxIcon.Question)!=DialogResult.OK)return false;DiscardFields();return true;}
         void DiscardFields(){dirty=false;conflict=false;if(DraftChanged!=null)DraftChanged();}
-        public void DiscardDraft(){DiscardFields();if(vehicles!=null)vehicles.Applied();}
+        public void DiscardDraft(){DiscardFields();ClearOrder();if(vehicles!=null)vehicles.Applied();}
         public void Accept(FoundationReply reply,bool replace)
         {
             var next=reply.Forces??new ForcesView();bool changed=session!=reply.WorldSession;
-            if(changed||replace)DiscardDraft();else if(dirty&&baseline!=next.Fingerprint())conflict=true;
+            if(changed||replace)DiscardDraft();
+            else
+            {
+                if(dirty&&baseline!=FieldsStamp(next))conflict=true;
+                if(HasOrderDraft&&orderBaseline!=OrderStamp(next))orderConflict=true;
+            }
             data=next;session=reply.WorldSession;
             filling=true;
             string prior=available.SelectedItem is EditorFaction?((EditorFaction)available.SelectedItem).Key:"";
@@ -159,7 +205,7 @@ namespace TvtLobby.MissionEditor
         void FillGrid()
         {
             filling=true;
-            if(groupMode){string key=(filter.SelectedItem as FilterItem??new FilterItem()).Key;grid.DataSource=data.OrderedGroups().Where(g=>(key==""||g.EngineKey==key)&&(groupSearch==null||((g.Name??"")+" "+(g.Callsign??"")).IndexOf(groupSearch.Text.Trim(),StringComparison.OrdinalIgnoreCase)>=0)).ToList();}
+            if(groupMode){string key=(filter.SelectedItem as FilterItem??new FilterItem()).Key;grid.DataSource=OrderedGroups().Where(g=>(key==""||g.EngineKey==key)&&(groupSearch==null||((g.Name??"")+" "+(g.Callsign??"")).IndexOf(groupSearch.Text.Trim(),StringComparison.OrdinalIgnoreCase)>=0)).ToList();}
             else grid.DataSource=data.Factions;
             if(!groupMode)grid.Height=Math.Min(230,Math.Max(125,34+30*grid.Rows.Count));
             grid.ClearSelection();foreach(DataGridViewRow row in grid.Rows)if(RowKey(row)==selected){row.Selected=true;grid.CurrentCell=row.Cells[0];break;}
@@ -188,7 +234,15 @@ namespace TvtLobby.MissionEditor
                 var row=data.Factions.FirstOrDefault(f=>f.Key==selected);defaultName.Checked=row==null||String.IsNullOrEmpty(row.Name);displayName.Text=row==null?"":row.Name;alliance.Text=row==null?"":row.Alliance;
                 info.Text=row==null?"No mission factions yet. Add one above.":"Engine: "+row.Key+" · Default: "+row.DefaultName+" · "+(row.Layers!=0?"Faction layers present":"Faction layers missing");
             }
-            filling=false;baseline=data.Fingerprint();UpdateActions();
+            filling=false;baseline=FieldsStamp(data);UpdateActions();
+        }
+        string FieldsStamp(ForcesView view)
+        {
+            if(!groupMode)return view.Fingerprint();
+            var row=view.Groups.FirstOrDefault(g=>g.Key==selected);
+            // Assigning stable IDs while applying an order does not change the edited fields.
+            if(row==null)return "missing";
+            return EditorJson.Serialize(new {row.Key,row.Name,row.EngineKey,row.Editable,row.Playable,row.Assigned,row.Company,row.Platoon,row.Squad,Faction=view.Available.FirstOrDefault(f=>f.Key==row.EngineKey)});
         }
         static void FillNames(ComboBox c,List<string> names,int selected){c.Items.Clear();if(names!=null)for(int i=0;i<names.Count;i++){string name=names[i]??"";c.Items.Add(name.Trim().Length>0&&name.Trim().All(Char.IsDigit)?name:name+" ("+i+")");}if(c.Items.Count>0)c.SelectedIndex=Math.Max(0,Math.Min(c.Items.Count-1,selected));}
         bool SelectVehicleGroup(string key)
@@ -203,21 +257,16 @@ namespace TvtLobby.MissionEditor
         void UpdateActions()
         {
             bool has=!String.IsNullOrEmpty(selected),editable=has;
-            if(groupMode){var row=data.Groups.FirstOrDefault(g=>g.Key==selected);editable=row!=null&&row.Editable!=0;company.Enabled=platoon.Enabled=squad.Enabled=assigned.Checked&&editable;assigned.Enabled=playable.Enabled=editable;if(up!=null){var order=row==null?new List<EditorGroup>():data.OrderedGroups().Where(g=>g.EngineKey==row.EngineKey&&g.Playable!=0).ToList();int position=order.IndexOf(row);up.Enabled=editable&&!dirty&&position>0;down.Enabled=editable&&!dirty&&position>=0&&position<order.Count-1;select.Enabled=has;}
+            if(groupMode){var row=data.Groups.FirstOrDefault(g=>g.Key==selected);editable=row!=null&&row.Editable!=0;company.Enabled=platoon.Enabled=squad.Enabled=assigned.Checked&&editable;assigned.Enabled=playable.Enabled=editable;if(up!=null){var order=row==null?new List<EditorGroup>():OrderedGroups().Where(g=>g.EngineKey==row.EngineKey&&g.Playable!=0).ToList();int position=order.IndexOf(row);up.Enabled=editable&&!dirty&&CanEditOrder&&position>0;down.Enabled=editable&&!dirty&&CanEditOrder&&position>=0&&position<order.Count-1;select.Enabled=has;}
                 var f=row==null?null:data.Available.FirstOrDefault(a=>a.Key==row.EngineKey);preview.Text="Automatic: assigned in lobby order at launch. Explicit callsigns are reserved.";
                 if(assigned.Checked&&f!=null&&company.SelectedIndex>=0&&platoon.SelectedIndex>=0&&squad.SelectedIndex>=0)preview.Text=(f.Format??"%1 %2 %3").Replace("%1",f.Companies[company.SelectedIndex]).Replace("%2",f.Platoons[platoon.SelectedIndex]).Replace("%3",f.Squads[squad.SelectedIndex]);}
             else {displayName.Enabled=has&&!defaultName.Checked;defaultName.Enabled=alliance.Enabled=has;if(remove!=null)remove.Enabled=has&&!dirty;}
-            if(apply!=null)apply.Enabled=editable&&!conflict;
-            if(vehicles!=null)vehicles.Accept(data,selected,dirty||conflict,(filter.SelectedItem as FilterItem??new FilterItem()).Key);
+            if(apply!=null&&!groupMode)apply.Enabled=editable&&!conflict;
+            if(vehicles!=null)vehicles.Accept(data,selected,dirty||conflict||groupMoving,(filter.SelectedItem as FilterItem??new FilterItem()).Key);
+            UpdateBatchActions();
+            RefreshLinks();
             notice.Text=conflict?"Workbench changed. Your fields are retained; Reload fields before applying.":dirty?"Unapplied fields — Apply or Reload before switching rows.":groupMode&&data.VehicleAssignmentsVersion<1?VehiclesPanel.UpdateRequired:"Changes use native Undo. Save mission writes them to disk.";
         }
-        async Task Apply(){if(String.IsNullOrEmpty(selected)||conflict)return;await send(groupMode?"group_update":"faction_update",new ForcesEdit{Key=selected,Name=displayName.Text,DefaultName=defaultName.Checked?1:0,Alliance=alliance.Text.Trim(),Playable=playable.Checked?1:0,Assigned=assigned.Checked?1:0,Company=company.SelectedIndex,Platoon=platoon.SelectedIndex,Squad=squad.SelectedIndex});}
-        async Task MoveGroup(int delta)
-        {
-            if(String.IsNullOrEmpty(selected)||dirty||conflict||groupMoving||delta==0)return;
-            groupMoving=true;up.Enabled=down.Enabled=false;
-            try{await send("group_move",new ForcesEdit{Key=selected,Delta=delta});}
-            finally{groupMoving=false;if(!IsDisposed)UpdateActions();}
-        }
+        async Task Apply(){if(groupMode){await ApplyPending();return;}if(String.IsNullOrEmpty(selected)||conflict)return;await send("faction_update",ReadFields());}
     }
 }

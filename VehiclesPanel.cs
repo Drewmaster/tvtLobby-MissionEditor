@@ -32,15 +32,18 @@ namespace TvtLobby.MissionEditor
         readonly TextBox search=new TextBox();
         readonly EditorCombo groupPicker=new EditorCombo();
         readonly Func<string,bool> chooseGroup;
+        readonly bool sharedApply;
         ForcesView data=new ForcesView(),display=new ForcesView();string groupKey="",factionKey="",fingerprint="",baseline="";bool blocked,filling,conflict;
         readonly List<VehicleAssignmentEdit> changes=new List<VehicleAssignmentEdit>();
         public event Action DraftChanged;
         public bool HasDraft {get{return changes.Count>0;}}
+        public ForcesView Preview {get{return display;}}
+        public int PendingCount {get{return changes.Count;}}
         public string DraftError {get{return !HasDraft?null:conflict?"Vehicle assignments changed in Workbench. Discard the assignment draft and review the current scene.":data.VehicleAssignmentsVersion<2?UpdateRequired:null;}}
 
-        public VehiclesPanel(Func<string,ForcesEdit,Task<FoundationReply>> callback,Func<string,bool> groupSelection=null)
+        public VehiclesPanel(Func<string,ForcesEdit,Task<FoundationReply>> callback,Func<string,bool> groupSelection=null,bool sharedApply=false)
         {
-            chooseGroup=groupSelection;
+            chooseGroup=groupSelection;this.sharedApply=sharedApply;
             send=callback;Height=380;Dock=DockStyle.Top;BackColor=Color.FromArgb(22,28,31);ForeColor=Color.Gainsboro;
             var layout=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=6};layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute,66));layout.RowStyles.Add(new RowStyle(SizeType.Absolute,32));layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));layout.RowStyles.Add(new RowStyle(SizeType.Absolute,52));layout.RowStyles.Add(new RowStyle(SizeType.Absolute,32));Controls.Add(layout);
@@ -52,8 +55,21 @@ namespace TvtLobby.MissionEditor
             var actions=new FlowLayoutPanel{Dock=DockStyle.Top,AutoSize=true};layout.Controls.Add(actions,0,3);
             assign=Button("Assign to group",()=>StageSelected(true));remove=Button("Remove assignment",()=>StageSelected(false));select=Button("Select in world",async()=>await Send("vehicle_select"));
             actions.Controls.AddRange(new Control[]{assign,remove,select});details.Dock=DockStyle.Fill;details.UseMnemonic=false;details.ForeColor=Color.FromArgb(158,178,184);layout.Controls.Add(details,0,4);
-            apply=Button("Apply assignments",async()=>await ApplyPending());discard=Button("Discard changes",Applied);actions.Controls.AddRange(new Control[]{apply,discard});
+            apply=Button("Apply assignments",async()=>await ApplyPending());discard=Button("Discard changes",Applied);if(!sharedApply)actions.Controls.AddRange(new Control[]{apply,discard});
             draftStatus.Dock=DockStyle.Fill;draftStatus.ForeColor=EditorTheme.Amber;layout.Controls.Add(draftStatus,0,5);
+            if(sharedApply)
+            {
+                // The common footer replaces this panel's Apply/status rows.
+                // Keep the vehicle list usable when the editor window is smaller.
+                layout.Controls.Remove(destination);layout.Controls.Remove(searchRow);
+                searchRow.Controls.Remove(search);searchRow.Dispose();
+                var filters=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=1,Margin=Padding.Empty};
+                filters.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,60));filters.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,40));
+                filters.Controls.Add(destination,0,0);search.Dock=DockStyle.Top;filters.Controls.Add(EditorTheme.Field("Search vehicles",search),1,0);
+                layout.Controls.Add(filters,0,0);layout.RowStyles[0].Height=62;layout.RowStyles[1].Height=0;layout.RowStyles[4].Height=44;layout.RowStyles[5].Height=0;draftStatus.Visible=false;
+                Controls.Remove(layout);var viewport=new Panel{Dock=DockStyle.Fill,AutoScroll=true};layout.Dock=DockStyle.Top;layout.Height=340;
+                viewport.Controls.Add(layout);Controls.Add(viewport);viewport.SizeChanged+=(s,e)=>layout.Height=Math.Max(340,viewport.ClientSize.Height);
+            }
             EditorTheme.Apply(this);tabs.SelectedIndex=0;tabs.SelectedIndexChanged+=(s,e)=>UpdateActions();UpdateActions();
         }
         sealed class GroupOption{public string Key,Label;public override string ToString(){return Label;}}
@@ -125,7 +141,7 @@ namespace TvtLobby.MissionEditor
             remove.Enabled=editable&&vehicle.Groups.Contains(groupKey);select.Enabled=supported&&vehicle!=null&&!blocked;
             apply.Enabled=HasDraft&&!blocked&&DraftError==null;discard.Enabled=HasDraft;
             apply.Text=HasDraft?"Apply assignments ("+changes.Count+")":"Apply assignments";
-            draftStatus.Text=data.VehicleAssignmentsVersion<2?UpdateRequired:DraftError??(HasDraft?changes.Count+" pending changes across groups. Apply assignments or Apply & save mission to send them together.":"Assign and Remove only change this draft. Apply once when all assignments are ready.");
+            draftStatus.Text=data.VehicleAssignmentsVersion<2?UpdateRequired:DraftError??(sharedApply?"Assignments and group order share the Apply button below.":HasDraft?changes.Count+" pending changes across groups. Apply assignments or Apply & save mission to send them together.":"Assign and Remove only change this draft. Apply once when all assignments are ready.");
             details.Text=!supported?UpdateRequired:blocked?"Apply or reload the group fields before changing assignments.":vehicle==null?"Place vehicles in the faction's Vehicles_<key> layer, then Refresh. Child vehicles are assigned automatically.":
                 "Groups: "+(vehicle.Groups.Count==0?"none":String.Join(", ",vehicle.Groups.Select(k=>{var g=data.Groups.FirstOrDefault(a=>a.Key==k);return g==null?k:g.Name+" · "+g.Callsign;})))+
                 "\n"+(vehicle.IsChild?"Child of a group — change the hierarchy in World Editor to reassign.":"A vehicle may be shared by several groups. Removing one assignment keeps the others.")+
@@ -142,7 +158,7 @@ namespace TvtLobby.MissionEditor
             foreach(string key in changes.Select(c=>c.GroupKey).Distinct().OrderBy(k=>k,StringComparer.Ordinal))
             {
                 var g=view.Groups.FirstOrDefault(a=>a.Key==key);
-                parts.Add(g==null?key+":missing":EditorJson.Serialize(new {g.Key,g.Id,g.EngineKey,g.Playable,g.Editable}));
+                parts.Add(g==null?key+":missing":EditorJson.Serialize(new {g.Key,g.EngineKey,g.Playable,g.Editable}));
             }
             return String.Join("\n",parts);
         }
@@ -158,11 +174,17 @@ namespace TvtLobby.MissionEditor
             return projected;
         }
         void StageSelected(bool add){var vehicle=Selected();if(vehicle!=null)StageAssignment(vehicle.Key,groupKey,add);}
-        public bool StageAssignment(string vehicleKey,string destination,bool add)
+        public bool CanStageAssignment(string vehicleKey,string destination,bool add)
         {
             var vehicle=data.Vehicles.FirstOrDefault(v=>v.Key==vehicleKey);var group=data.Groups.FirstOrDefault(g=>g.Key==destination);
             if(blocked||conflict||data.VehicleAssignmentsVersion<2||vehicle==null||vehicle.Editable==0||vehicle.IsChild||group==null)return false;
             if(add&&(group.Playable==0||vehicle.EngineKey!=group.EngineKey))return false;
+            return true;
+        }
+        public bool StageAssignment(string vehicleKey,string destination,bool add)
+        {
+            if(!CanStageAssignment(vehicleKey,destination,add))return false;
+            var vehicle=data.Vehicles.First(v=>v.Key==vehicleKey);
             changes.RemoveAll(c=>c.VehicleKey==vehicleKey&&c.GroupKey==destination);
             if(add!=vehicle.Groups.Contains(destination))changes.Add(new VehicleAssignmentEdit{VehicleKey=vehicleKey,GroupKey=destination,Assigned=add?1:0});
             baseline=AssignmentStamp(data);Accept(data,groupKey,blocked,factionKey);if(DraftChanged!=null)DraftChanged();return true;
