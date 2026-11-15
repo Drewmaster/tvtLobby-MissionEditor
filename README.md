@@ -2,11 +2,11 @@
 
 Use Mission Editor to set up and edit your tvtLobby missions in Arma Reforger Workbench.
 
-**[Download Mission Editor 1.0.7 (ZIP)](https://github.com/Drewmaster/tvtLobby-MissionEditor/releases/download/v1.0.7/tvtLobby-MissionEditor-1.0.7.zip)**
+**[Download Mission Editor 1.0.9 (ZIP)](https://github.com/Drewmaster/tvtLobby-MissionEditor/releases/download/v1.0.9/tvtLobby-MissionEditor-1.0.9.zip)**
 
-For **tvtLobby 1.0.7**. If you use tvtLobby 1.0.5 or 1.0.6, keep [Mission Editor 1.0.5](https://github.com/Drewmaster/tvtLobby-MissionEditor/releases/tag/v1.0.5) until you update the addon.
+For **tvtLobby 1.0.9**. Update both the addon and editor for this release, then restart Workbench. Later addon updates can keep using this editor unless Workbench asks for a new package.
 
-This update adds a shared Apply for group sorting and vehicle assignments, visual drag-and-drop assignments, briefing drafts that apply together, and friendly nametag distance settings (3 metres by default).
+This release checks the installed package and its connection to the loaded addon. Compatibility messages identify both versions and the addon location, so a mismatch is easier to investigate.
 
 ## Install
 

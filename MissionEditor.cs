@@ -10,8 +10,8 @@ using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
-[assembly: AssemblyFileVersion("1.0.7.0")]
-[assembly: AssemblyInformationalVersion("1.0.7")]
+[assembly: AssemblyFileVersion("1.0.9.0")]
+[assembly: AssemblyInformationalVersion("1.0.9")]
 
 namespace TvtLobby.MissionEditor
 {
@@ -20,6 +20,9 @@ namespace TvtLobby.MissionEditor
         public string Token { get; set; }
         public int Port { get; set; }
         public int Protocol { get; set; }
+        public string BridgeVersion { get; set; }
+        public string RequiredEditorVersion { get; set; }
+        public string AddonPath { get; set; }
     }
 
     public sealed class GroupRow
@@ -41,6 +44,9 @@ namespace TvtLobby.MissionEditor
     {
         public bool Ok { get; set; }
         public int Protocol { get; set; }
+        public string BridgeVersion { get; set; }
+        public string RequiredEditorVersion { get; set; }
+        public string AddonPath { get; set; }
         public string Code { get; set; }
         public string Message { get; set; }
         public string WorldPath { get; set; }
@@ -51,7 +57,8 @@ namespace TvtLobby.MissionEditor
     // The official Workbench NET API framing: little-endian Int32 + UTF-8 byte strings.
     public sealed class WorkbenchClient
     {
-        public const int EditorProtocol = 2;
+        public const int EditorProtocol = 3;
+        public static readonly string EditorVersion = ((AssemblyInformationalVersionAttribute)Attribute.GetCustomAttribute(typeof(WorkbenchClient).Assembly, typeof(AssemblyInformationalVersionAttribute))).InformationalVersion;
         public const string CompatibilityError = "This Mission Editor ZIP is incompatible with the scripts loaded in Workbench. Update the tvtLobby addon and install the matching Mission Editor ZIP from GitHub Releases, then restart Workbench and reopen Mission Editor.";
         private readonly Session session;
         public WorkbenchClient(Session value) { session = value; }
@@ -80,7 +87,7 @@ namespace TvtLobby.MissionEditor
 
         public static void VerifyCompatibility(Session session)
         {
-            if (session.Protocol != EditorProtocol) throw new IOException(CompatibilityError);
+            VerifySession(session);
             var request = new Dictionary<string, object> {
                 {"APIFunc", "tvtLobby_MissionEditorBridge"}, {"Token", session.Token},
                 {"Operation", "hello"}, {"Protocol", EditorProtocol}
@@ -88,7 +95,29 @@ namespace TvtLobby.MissionEditor
             var reply = new JavaScriptSerializer().Deserialize<Reply>(RawCall(session.Port, request, 4000));
             if (reply != null && reply.Code == "NO_SESSION") throw new IOException(reply.Message);
             if (reply == null || !reply.Ok || reply.Protocol != EditorProtocol)
-                throw new IOException(reply != null && reply.Code == "INCOMPATIBLE_EDITOR" ? reply.Message : CompatibilityError);
+                throw new IOException(reply != null && reply.Code == "INCOMPATIBLE_EDITOR" ? reply.Message : DescribeCompatibility(session));
+            if (reply.BridgeVersion != session.BridgeVersion || reply.RequiredEditorVersion != session.RequiredEditorVersion || reply.AddonPath != session.AddonPath)
+                throw new IOException("The loaded tvtLobby integration does not match this editor session. Close Mission Editor and reopen it from the intended Workbench window.\n\n" + DescribeCompatibility(session) + "\nResponding integration: " + reply.BridgeVersion + "\nResponding addon location: " + reply.AddonPath);
+        }
+
+        public static void VerifySession(Session session)
+        {
+            Version required;
+            if (session == null || session.Protocol != EditorProtocol || String.IsNullOrWhiteSpace(session.BridgeVersion) || String.IsNullOrWhiteSpace(session.AddonPath)
+                || !Version.TryParse(session.RequiredEditorVersion, out required) || required > new Version(EditorVersion))
+                throw new IOException(DescribeCompatibility(session));
+        }
+
+        public static string DescribeCompatibility(Session session)
+        {
+            string guidance = session != null && session.Protocol < EditorProtocol
+                ? "Update tvtLobby to 1.0.9 or a later compatible release, restart Workbench, and reopen Mission Editor."
+                : "Install the Mission Editor version requested by Workbench, then reopen it from Workbench.";
+            string details = "Mission Editor: " + EditorVersion + " (protocol " + EditorProtocol + ")";
+            if (session != null)
+                details += "\nLoaded tvtLobby editor integration: " + (session.BridgeVersion ?? "not reported") + " (protocol " + session.Protocol + ")"
+                    + "\nRequired Mission Editor: " + (session.RequiredEditorVersion ?? "not reported") + "\nAddon location: " + (session.AddonPath ?? "not reported");
+            return guidance + "\n\n" + details;
         }
 
         internal static string RawCall(int port, object request, int timeout)
@@ -283,8 +312,7 @@ namespace TvtLobby.MissionEditor
                 Guid token;
                 if (session == null || !Guid.TryParse(session.Token, out token) || session.Port < 1 || session.Port > 65535)
                     throw new ArgumentException("Invalid editor session. Reopen the application from Workbench.");
-                if (session.Protocol != WorkbenchClient.EditorProtocol)
-                    throw new IOException(WorkbenchClient.CompatibilityError);
+                WorkbenchClient.VerifySession(session);
                 bool created;
                 using (var instance = new Mutex(true, "Local\\tvtLobby.MissionEditor." + token.ToString("N"), out created))
                 {

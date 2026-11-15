@@ -43,7 +43,7 @@ namespace TvtLobby.MissionEditor
         public EditorWindow(Session value,bool connectOnShow=true)
         {
             session=value;client=new FoundationClient(session);
-            Text="tvtLobby | Mission Editor";Size=new Size(1440,1000);MinimumSize=new Size(980,680);
+            Text="tvtLobby | Mission Editor "+WorkbenchClient.EditorVersion;Size=new Size(1440,1000);MinimumSize=new Size(980,680);
             AutoScaleMode=AutoScaleMode.Dpi;StartPosition=FormStartPosition.CenterScreen;Font=EditorTheme.Font();BackColor=EditorTheme.Background;ForeColor=EditorTheme.Text;
             var frame=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=3,Margin=Padding.Empty};
             frame.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,220));frame.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));

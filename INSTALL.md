@@ -2,7 +2,7 @@
 
 Download the Mission Editor ZIP from [GitHub Releases](https://github.com/Drewmaster/tvtLobby-MissionEditor/releases/latest).
 
-**Mission Editor 1.0.7 requires tvtLobby 1.0.7.** For tvtLobby 1.0.5 or 1.0.6, use [Mission Editor 1.0.5](https://github.com/Drewmaster/tvtLobby-MissionEditor/releases/tag/v1.0.5).
+**Use Mission Editor 1.0.9 with tvtLobby 1.0.9.** Update both for this release and restart Workbench. Later addon updates only need a new editor if Workbench asks for one.
 
 1. Open your saved mission in Workbench with **tvtLobby** enabled as a dependency.
 2. Click **tvtLobby Mission Editor** in the World Editor toolbar or select **Plugins → tvtLobby: Mission Editor**. In the dialog, click **Open install folder**.
@@ -19,5 +19,15 @@ If Workbench reports that it prepared a session but could not start the editor, 
 Restart Workbench after updating the tvtLobby addon. If Workbench reports an incompatible or incomplete package, close Mission Editor and click **Delete old version**. This keeps the old package as a backup and opens the install folder. Extract the new **tvtLobby-MissionEditor** folder there and click **Mission Editor** again.
 
 With earlier addon versions, open the install folder and replace **tvtLobby-MissionEditor** manually. Your missions and drafts are stored separately.
+
+## Compatibility and troubleshooting
+
+| tvtLobby addon | Mission Editor package |
+| --- | --- |
+| 1.0.9 | 1.0.9 |
+| 1.0.8 | [1.0.7](https://github.com/Drewmaster/tvtLobby-MissionEditor/releases/tag/v1.0.7) |
+| 1.0.5–1.0.7 | [1.0.5](https://github.com/Drewmaster/tvtLobby-MissionEditor/releases/tag/v1.0.5) |
+
+The editor version appears in its window title. If an update prompt still appears with the matching versions after restarting Workbench, send the full message and the latest Workbench `console.log` with your report. The log is normally in the newest folder under `Documents\My Games\ArmaReforgerWorkbench\logs`. Version 1.0.9 includes the loaded integration version and addon location in the message and log. You do not need to reinstall repeatedly or downgrade the editor to diagnose a mismatch.
 
 The ZIP includes Microsoft's DirectXTex texture converter. [License](vendor/DirectXTex/LICENSE) · [Source and checksum](vendor/DirectXTex/source.json)
