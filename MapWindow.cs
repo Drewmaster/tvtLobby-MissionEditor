@@ -23,6 +23,7 @@ namespace TvtLobby.MissionEditor
         private readonly FlowLayoutPanel tools=new FlowLayoutPanel();
         private readonly TableLayoutPanel body=new TableLayoutPanel();
         private readonly Timer imageTimer=new Timer {Interval=2000};
+        private readonly ToolTip mapHelp=new ToolTip {AutoPopDelay=20000};
         private MapReply view;
         private MapAssets assets;
         private MapTopology topology;
@@ -30,6 +31,9 @@ namespace TvtLobby.MissionEditor
         private FreezeZoneSettings freezeDraft;
         private FreezeZoneSettings savedFreezeSettings;
         private bool freezeDirty;
+        private readonly RandomStartsPanel starts;
+        private readonly Panel inspectorHost=new Panel{Dock=DockStyle.Fill};
+        private Control markerPane;
         private readonly TextBox search=new TextBox();
         private readonly Button orderUp=new EditorButton{Text="↑ Up",AutoSize=true},orderDown=new EditorButton{Text="↓ Down",AutoSize=true};
         private Point dragOrigin;
@@ -43,6 +47,12 @@ namespace TvtLobby.MissionEditor
         public MapWindow(Session value)
         {
             session=value;Text="tvtLobby | Mission Editor — Map";Size=new Size(1440,900);MinimumSize=new Size(1060,680);
+            starts=new RandomStartsPanel(canvas){Visible=false};
+            starts.CanActivate=()=>!busy&&view!=null&&DiscardAllowed(false);
+            starts.Activated+=()=>{SetDraft(null,false);markerPane.Visible=false;starts.Visible=true;starts.BringToFront();};
+            starts.SelectionChanged+=SyncStartSelection;
+            starts.Changed+=()=>{FilterObjects();Text="tvtLobby | Mission Editor — Map"+(dirty||freezeDirty||starts.Dirty?" *":"");};
+            starts.Message+=text=>status.Text=text;
             StartPosition=FormStartPosition.CenterParent;Font=new Font("Segoe UI",9);BackColor=Color.FromArgb(28,32,34);ForeColor=Color.Gainsboro;
             AutoScaleMode=AutoScaleMode.Dpi;
             var frame=new TableLayoutPanel {Dock=DockStyle.Fill,ColumnCount=1,RowCount=3,Padding=new Padding(10)};
@@ -50,9 +60,9 @@ namespace TvtLobby.MissionEditor
             tools.Dock=DockStyle.Fill;tools.AutoSize=true;
             Button("Refresh",()=>Run("snapshot"));Button("Apply",ApplyDrafts);
             Button("Discard draft",()=>{if(DiscardAllowed())SelectMapRow(canvas.Draft==null?"":canvas.Draft.Key);return Task.FromResult(0);});
-            Button("Undo",()=>Run("undo"));Button("Redo",()=>Run("redo"));Button("Save world",()=>Run("save"));
-            Button("Select in World Editor",()=>Run("select"));Button("Fit map",()=>{canvas.Fit();return Task.FromResult(0);});
-            Button("Focus object",()=>{canvas.FocusDraft();return Task.FromResult(0);});
+            Button("Undo",()=>{if(starts.CanUndo){starts.Undo();return Task.FromResult(true);}return Run("undo");});Button("Redo",()=>{if(starts.CanRedo){starts.Redo();return Task.FromResult(true);}return Run("redo");});Button("Save world",()=>Run("save"));
+            Button("Select in World Editor",()=>Run(starts.Active?"selectstarts":"select"));Button("Fit map",()=>{canvas.Fit();return Task.FromResult(0);});
+            Button("Focus object",()=>{if(starts.Active)starts.FocusSelection();else canvas.FocusDraft();return Task.FromResult(0);});
             frame.Controls.Add(tools,0,0);
             var layers=new FlowLayoutPanel{Dock=DockStyle.Fill,AutoSize=true};
             foreach(string title in new[]{"Map details","Groups","Vehicles","Automatic freeze zones","Player preview"}){string key=title;var check=new EditorToggle{Text=title,Checked=title!="Player preview"&&title!="Automatic freeze zones",AutoSize=true};check.CheckedChanged+=(s,e)=>{if(key=="Map details")canvas.ShowDetails=check.Checked;if(key=="Groups")canvas.ShowGroups=check.Checked;if(key=="Vehicles")canvas.ShowVehicles=check.Checked;if(key=="Automatic freeze zones")canvas.ShowAutomatic=check.Checked;if(key=="Player preview")canvas.PlayerPreview=check.Checked;canvas.Invalidate();};layers.Controls.Add(check);}
@@ -65,11 +75,13 @@ namespace TvtLobby.MissionEditor
             var create=new FlowLayoutPanel{Dock=DockStyle.Fill,AutoSize=true};
             foreach(string kind in new[]{"Icon","Line","Area","Zone","FreezeCircle","Boundary"})
             {string type=kind;var add=new EditorButton{Text="+ "+(kind=="FreezeCircle"?"Freeze circle":kind=="Zone"?"Zone / freeze contour":kind=="Boundary"?"Battlefield boundary":kind)};add.Click+=(s,e)=>New(type);create.Controls.Add(add);}
+            create.Controls.Add(EditorTheme.Button("+ Random start",()=>starts.StartAdding()));
             objects.Dock=DockStyle.Fill;objects.BackColor=Color.FromArgb(20,25,27);objects.ForeColor=Color.Gainsboro;objects.IntegralHeight=false;
             objects.DrawMode=DrawMode.OwnerDrawFixed;objects.ItemHeight=34;
             objects.DrawItem+=(s,e)=>{if(e.Index<0)return;bool selected=(e.State&DrawItemState.Selected)!=0;using(var brush=new SolidBrush(selected?Color.FromArgb(55,49,39):EditorTheme.Background))e.Graphics.FillRectangle(brush,e.Bounds);if(selected)using(var brush=new SolidBrush(EditorTheme.Amber))e.Graphics.FillRectangle(brush,e.Bounds.X,e.Bounds.Y,3,e.Bounds.Height);TextRenderer.DrawText(e.Graphics,objects.Items[e.Index].ToString(),objects.Font,new Rectangle(e.Bounds.X+10,e.Bounds.Y,e.Bounds.Width-16,e.Bounds.Height),EditorTheme.Text,TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix);};
-            objects.SelectedIndexChanged+=(s,e)=>{if(loading)return;if(!DiscardAllowed()){RestoreSelection();return;}LoadSelection();};
-            objects.DoubleClick+=(s,e)=>canvas.FocusDraft();
+            objects.SelectionMode=SelectionMode.MultiExtended;
+            objects.SelectedIndexChanged+=(s,e)=>{if(loading)return;var selected=objects.SelectedItems.Cast<MapRow>().ToList();if(selected.Count>0&&selected.All(r=>r.Key.StartsWith("start:"))){if(!starts.Select(selected.Select(r=>r.Key.Substring(6))))RestoreSelection();return;}if(!DiscardAllowed(false)){RestoreSelection();return;}if(selected.Count>1){loading=true;objects.ClearSelected();objects.SelectedItem=selected.First(r=>!r.Key.StartsWith("start:"));loading=false;}LoadSelection();};
+            objects.DoubleClick+=(s,e)=>{if(starts.Active)starts.FocusSelection();else canvas.FocusDraft();};
             var orderTools=new FlowLayoutPanel{Dock=DockStyle.Fill,AutoSize=true};
             orderTools.Controls.Add(orderUp);orderTools.Controls.Add(orderDown);
             orderTools.Controls.Add(new EditorLabel{Text="Top item appears in front · drag to reorder",AutoSize=true,MaximumSize=new Size(210,0)});
@@ -81,13 +93,15 @@ namespace TvtLobby.MissionEditor
             objects.DragLeave+=(s,e)=>{dropIndex=-1;objects.Invalidate();};
             objects.DragDrop+=async(s,e)=>{int at=dropIndex;bool after=dropAfter;dropIndex=-1;objects.Invalidate();if(at<0||at>=objects.Items.Count)return;await Reorder(e.Data.GetData(typeof(string)) as string,((MapRow)objects.Items[at]).Key,after);};
             objects.DrawItem+=(s,e)=>{if(e.Index!=dropIndex)return;using(var pen=new Pen(EditorTheme.Amber,2)){int y=dropAfter?e.Bounds.Bottom-1:e.Bounds.Top+1;e.Graphics.DrawLine(pen,e.Bounds.Left,y,e.Bounds.Right,y);}};
-            var help=new EditorLabel{AutoSize=true,MaximumSize=new Size(210,0),Text="Wheel: zoom\nRight / middle drag: pan\nClick: place / select vertex\nDrag vertex: move it\nShift + drag: move shape\nCtrl + click edge: add vertex\nDelete: remove vertex\nEnter / double click: finish\nEsc: stop drawing\n\nNew markers go to tvtLobby_Markers; zones go to tvtLobby_Zones. Save world is explicit.",Padding=new Padding(4,12,4,4)};
+            var help=new EditorLabel{AutoSize=true,MaximumSize=new Size(210,0),Text="Hover here for map controls",Padding=new Padding(4,8,4,4)};
+            mapHelp.SetToolTip(help,"Wheel: zoom\nRight / middle drag: pan\nClick: place / select vertex or start point\nDrag vertex / start point: move it\nShift + drag: move shape\nCtrl + click edge: add vertex\nCtrl + click start points: select several\nDelete: remove selected vertex / start points\nEnter / double click: finish shape\nEsc: stop drawing / placing points\n\nNew markers go to tvtLobby_Markers; zones go to tvtLobby_Zones. Apply changes, then Save world.");
             search.Dock=DockStyle.Fill;search.TextChanged+=(s,e)=>FilterObjects();
             left.Controls.Add(create,0,0);left.Controls.Add(search,0,1);left.Controls.Add(objects,0,2);left.Controls.Add(orderTools,0,3);left.Controls.Add(help,0,4);body.Controls.Add(left,0,0);
             canvas.Dock=DockStyle.Fill;canvas.Changed+=()=>{dirty=true;Text="tvtLobby | Mission Editor — Map *";if(canvas.Draft!=null&&vertices.Rows.Count!=canvas.Draft.Points.Count){loading=true;vertices.DataSource=new System.ComponentModel.BindingList<MapPoint>(canvas.Draft.Points);loading=false;}vertices.Refresh();};
-            canvas.Picked+=key=>{if(DiscardAllowed())SelectMapRow(key);};
+            canvas.Picked+=key=>{if(DiscardAllowed(false))SelectMapRow(key);};
             canvas.PositionChanged+=text=>coordinates.Text=text;body.Controls.Add(canvas,1,0);
             var right=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=5};
+            markerPane=right;
             right.RowStyles.Add(new RowStyle(SizeType.AutoSize));right.RowStyles.Add(new RowStyle(SizeType.Percent,80));right.RowStyles.Add(new RowStyle(SizeType.AutoSize));right.RowStyles.Add(new RowStyle(SizeType.Percent,20));right.RowStyles.Add(new RowStyle(SizeType.Absolute,25));
             description.AutoSize=true;description.MaximumSize=new Size(316,0);description.Padding=new Padding(4);description.Text="Choose an object or draw a new one.";
             properties.Dock=DockStyle.Fill;properties.PropertyValueChanged+=(s,e)=>{dirty=true;canvas.Invalidate();};
@@ -101,11 +115,11 @@ namespace TvtLobby.MissionEditor
             identity.Controls.Add(description);identity.Controls.Add(new EditorLabel {Text="Entity name (blank = automatic)",AutoSize=true});entityName.Width=310;identity.Controls.Add(entityName);
             identity.Controls.Add(layerName);identity.Controls.Add(moveLayer);moveLayer.Click+=async(s,e)=>await Run("layer");
             entityName.TextChanged+=(s,e)=>{if(!loading&&canvas.Draft!=null){canvas.Draft.Name=entityName.Text.Trim();dirty=true;}};
-            coordinates.Dock=DockStyle.Fill;right.Controls.Add(identity,0,0);right.Controls.Add(properties,0,1);right.Controls.Add(ground,0,2);right.Controls.Add(vertices,0,3);right.Controls.Add(coordinates,0,4);body.Controls.Add(right,2,0);
+            coordinates.Dock=DockStyle.Fill;right.Controls.Add(identity,0,0);right.Controls.Add(properties,0,1);right.Controls.Add(ground,0,2);right.Controls.Add(vertices,0,3);right.Controls.Add(coordinates,0,4);inspectorHost.Controls.Add(right);inspectorHost.Controls.Add(starts);body.Controls.Add(inspectorHost,2,0);
             frame.Controls.Add(body,0,2);status.Dock=DockStyle.Fill;status.Padding=new Padding(4,6,4,0);frame.Controls.Add(status,0,3);Controls.Add(frame);
             EditorTheme.Apply(this);status.Text="Connecting to Workbench…";UpdateConnection();Shown+=async(s,e)=>await Run("snapshot");
             FormClosing+=(s,e)=>{if(busy){e.Cancel=true;return;}if(!DiscardAllowed())e.Cancel=true;};
-            imageTimer.Tick+=async(s,e)=>{if(!busy&&!dirty&&!freezeDirty&&imageRetries++<5)await Run("snapshot",true);else imageTimer.Stop();};
+            imageTimer.Tick+=async(s,e)=>{if(!busy&&!dirty&&!freezeDirty&&!starts.Dirty&&imageRetries++<5)await Run("snapshot",true);else imageTimer.Stop();};
         }
         private void Button(string title,Func<Task> run)
         {var b=new EditorButton{Text=title,Primary=title=="Apply"};b.Click+=async(s,e)=>await run();tools.Controls.Add(b);}
@@ -115,25 +129,37 @@ namespace TvtLobby.MissionEditor
             foreach(Control button in tools.Controls)button.Enabled=!busy&&(button.Text=="Refresh"||connected);
             UpdateOrderButtons();
         }
-        private bool DiscardAllowed()
+        private bool DiscardAllowed(bool includeStarts=true)
         {
-            if(!dirty&&!freezeDirty)return true;
-            if(MessageBox.Show(this,"Discard the unapplied map / freeze draft? Applied edits remain in Workbench and can be undone there.","Map draft",MessageBoxButtons.YesNo,MessageBoxIcon.Question)!=DialogResult.Yes)return false;
+            if(!dirty&&!freezeDirty&&(!includeStarts||!starts.Dirty))return true;
+            if(MessageBox.Show(this,"Discard the unapplied map changes? Applied edits remain in Workbench and can be undone there.","Map draft",MessageBoxButtons.YesNo,MessageBoxIcon.Question)!=DialogResult.Yes)return false;
+            if(includeStarts)starts.Discard();
             dirty=false;freezeDirty=false;freezeDraft=null;if(view!=null)view.FreezeZones=savedFreezeSettings;return true;
         }
         private async Task ApplyDrafts()
         {
+            if(starts.Dirty){string error=starts.ValidateDraft();if(error!=null){status.Text=error;return;}}
             if(freezeDirty){string error=freezeDraft.Validate();if(error!=null){status.Text=error;return;}}
             if(dirty && !await Run(canvas.Draft!=null&&String.IsNullOrEmpty(canvas.Draft.Key)?"create":"update"))return;
-            if(freezeDirty)await Run("freeze");
-            else if(!dirty)status.Text="Applied changes are in Workbench. Save world writes them to disk.";
+            if(freezeDirty&&!await Run("freeze"))return;
+            if(starts.Dirty&&!await Run("randomstarts"))return;
+            status.Text="Applied changes are in Workbench. Save world writes them to disk.";
         }
+        private void SyncStartSelection()
+        {
+            var keys=new HashSet<string>(starts.SelectedIds.Select(id=>"start:"+id));
+            if(keys.SetEquals(objects.SelectedItems.Cast<MapRow>().Select(r=>r.Key)))return;
+            loading=true;objects.ClearSelected();for(int i=0;i<objects.Items.Count;i++)if(keys.Contains(((MapRow)objects.Items[i]).Key))objects.SetSelected(i,true);loading=false;
+        }
+        private void ShowMarkers(){starts.Deactivate();starts.Visible=false;markerPane.Visible=true;markerPane.BringToFront();}
         private void RestoreSelection()
         {loading=true;objects.SelectedItem=canvas.Draft==null?null:objects.Items.Cast<MapRow>().FirstOrDefault(r=>r.Key==canvas.Draft.Key);loading=false;}
         private void LoadSelection()
-        {var row=objects.SelectedItem as MapRow;SetDraft(row==null?null:row.Copy(),false);}
+        {var row=objects.SelectedItem as MapRow;ShowMarkers();SetDraft(row==null?null:row.Copy(),false);}
         private void SelectMapRow(string key)
         {
+            if(key!=null&&key.StartsWith("start:")){starts.Select(new[]{key.Substring(6)});return;}
+            ShowMarkers();
             // Placed groups and vehicles can be picked on the map without being
             // entries in the author-created markers/zones list.
             var row=view==null?null:view.Rows.FirstOrDefault(r=>r.Key==key);
@@ -145,9 +171,12 @@ namespace TvtLobby.MissionEditor
             if(view==null)return;
             string key=selectedKey??(canvas.Draft==null?"":canvas.Draft.Key);
             loading=true;
-            var rows=MapOrder.FrontToBack(view.Rows.Where(r=>r.Kind!="Group"&&r.Kind!="Vehicle")).OrderByDescending(MapOrder.IsMarker).Where(r=>r.ToString().IndexOf(search.Text,StringComparison.OrdinalIgnoreCase)>=0).ToList();
-            objects.DataSource=rows;objects.SelectedItem=rows.FirstOrDefault(r=>r.Key==key);
+            var rows=MapOrder.FrontToBack(view.Rows.Where(r=>r.Kind!="Group"&&r.Kind!="Vehicle")).OrderByDescending(MapOrder.IsMarker).Concat(starts.Rows()).Where(r=>r.ToString().IndexOf(search.Text,StringComparison.OrdinalIgnoreCase)>=0).ToList();
+            // A bound ListBox follows CurrencyManager's one current row and can
+            // collapse Ctrl-selection. Start points need a genuine multi-selection.
+            objects.BeginUpdate();objects.Items.Clear();objects.Items.AddRange(rows.Cast<object>().ToArray());objects.SelectedItem=rows.FirstOrDefault(r=>r.Key==key);objects.EndUpdate();
             loading=false;
+            if(starts.Active)SyncStartSelection();
             UpdateOrderButtons();
         }
         private void UpdateOrderButtons()
@@ -166,7 +195,7 @@ namespace TvtLobby.MissionEditor
         private async Task Reorder(string key,string target,bool after)
         {
             if(busy||view==null||connectionFailed||String.IsNullOrEmpty(key)||key==target)return;
-            if(dirty||freezeDirty){status.Text="Apply or discard the current draft before changing layer order.";return;}
+            if(dirty||freezeDirty||starts.Dirty){status.Text="Apply or discard the current draft before changing layer order.";return;}
             var row=view.Rows.FirstOrDefault(r=>r.Key==key);if(row==null||row.ReadOnly)return;
             pendingOrder=MapOrder.Move(view.Rows,key,target,after);
             if(pendingOrder.SequenceEqual(MapOrder.FrontToBack(view.Rows.Where(MapOrder.IsMarker)).Select(r=>r.Key))){pendingOrder=null;return;}
@@ -186,11 +215,12 @@ namespace TvtLobby.MissionEditor
             vertices.DataSource=row==null?null:new System.ComponentModel.BindingList<MapPoint>(row.Points);
             description.Text=row==null?"Choose an object or draw a new one.":row.Kind+" · "+(String.IsNullOrEmpty(row.Name)?"New object":row.Name)+"\n"+
                 (row.Kind=="Group"||row.Kind=="Vehicle"?"Placed object. Select in World Editor to edit its position.":canvas.Locked?"Inherited / locked layer or linked geometry: edit its source in Workbench.":row.Kind=="FreezeCircle"?"Vanilla circle: drag the center; configure radii and group assignments below.":row.Kind=="Zone"||row.Kind=="Boundary"?"Authoring contour. Configure geometry here; use it in Objectives or freeze assignments.":"Appearance updates directly on this map. Player preview filters the initial visibility by phase and faction.");
-            Text="tvtLobby | Mission Editor — Map"+(dirty||freezeDirty?" *":"");loading=false;UpdateOrderButtons();canvas.Invalidate();
+            Text="tvtLobby | Mission Editor — Map"+(dirty||freezeDirty||starts.Dirty?" *":"");loading=false;UpdateOrderButtons();canvas.Invalidate();
         }
         private void New(string kind)
         {
-            if(busy||view==null||!DiscardAllowed())return;
+            if(busy||view==null||!DiscardAllowed(false))return;
+            ShowMarkers();
             loading=true;objects.ClearSelected();loading=false;
             var row=new MapRow{Kind=kind,Title="New "+kind,Enabled=kind!="Boundary"};
             if(MapOrder.IsMarker(row))row.Style=new MapStyle{ZOrder=view.Rows.Select(MapOrder.Value).DefaultIfEmpty(0).Max()+1,Tint=view.Colors.Count>0?view.Colors[0]:"1 1 1 1",LabelColor=view.Colors.Count>0?view.Colors[0]:"1 1 1 1"};
@@ -215,13 +245,17 @@ namespace TvtLobby.MissionEditor
             if(operation!="snapshot"&&view==null){status.Text="Refresh to connect first.";return false;}
             if((operation=="select"||operation=="layer")&&(canvas.Draft==null||String.IsNullOrEmpty(canvas.Draft.Key))){status.Text="Apply the object first.";return false;}
             if((operation=="select"||operation=="layer")&&(dirty||freezeDirty)){status.Text="Apply or discard the draft before working with its saved object in Workbench.";return false;}
-            if(operation=="save"&&(dirty||freezeDirty)){status.Text="Apply or discard your map draft before saving the world.";return false;}
+            if(operation=="save"&&(dirty||freezeDirty||starts.Dirty)){status.Text="Apply or discard your map draft before saving the world.";return false;}
+            if(operation=="randomstarts"){string error=starts.ValidateDraft();if(error!=null){status.Text=error;return false;}}
+            if(operation=="selectstarts"&&(starts.Dirty||!starts.SelectedIds.Any())){status.Text="Apply your points, then select the ones to reveal in World Editor.";return false;}
             var request=new Dictionary<string,object>{{"APIFunc","tvtLobby_MissionMapBridge"},{"Token",session.Token},{"Operation",operation},
                 {"ExpectedWorld",view==null?"":view.WorldPath},{"ViewRevision",view==null?"":view.ViewRevision},
                 {"Key",canvas.Draft==null?"":canvas.Draft.Key},{"Ground",ground.Checked}};
             if(operation=="create"||operation=="update")request["Row"]=canvas.Draft;
             if(operation=="freeze")request["FreezeZones"]=freezeDraft;
             if(operation=="reorder")request["Order"]=pendingOrder;
+            if(operation=="randomstarts")request["RandomStarts"]=starts.Data;
+            if(operation=="selectstarts")request["StartPointIds"]=starts.SelectedIds.ToArray();
             busy=true;UpdateConnection();
             status.Text=operation=="snapshot"?"Reading map and world objects from Workbench…":"Applying map action in Workbench…";
             try
@@ -229,7 +263,7 @@ namespace TvtLobby.MissionEditor
                 var json=new JavaScriptSerializer{MaxJsonLength=16*1024*1024};
                 // A full-terrain snapshot can exceed the short general-editor timeout.
                 // Keep waiting bounded, without retrying a mutation automatically.
-                MapReply reply=await Task.Run(()=>MapWire.Read(WorkbenchClient.Call(session.Port,request,15000)));
+                MapReply reply=await Task.Run(()=>MapWire.Read(WorkbenchClient.Call(session.Port,request,operation=="randomstarts"?30000:15000)));
                 if(IsDisposed)return false;
                 if(reply==null||!reply.Ok){connectionFailed=reply==null||reply.Code=="NO_SESSION"||reply.Code=="WORLD_CHANGED"||reply.Code=="INCOMPATIBLE_EDITOR";status.Text=reply==null?"Empty map response.":reply.Message+" ["+reply.Code+"]";return false;}
                 if(assets==null||view==null||view.WorldPath!=reply.WorldPath){if(assets!=null)assets.Dispose();assets=new MapAssets(reply);if(topology!=null)topology.Dispose();topology=null;canvas.Topology=null;topologyResource=null;}
@@ -263,9 +297,10 @@ namespace TvtLobby.MissionEditor
                 bool first=view==null||view.WorldPath!=reply.WorldPath;
                 string key=String.IsNullOrEmpty(reply.SelectedKey)?canvas.Draft==null?"":canvas.Draft.Key:reply.SelectedKey;
                 view=reply;connectionFailed=false;
+                starts.SetScene(reply,first||operation=="randomstarts");
                 canvas.Assets=assets;canvas.Topology=topology;canvas.SetScene(reply,first);FilterObjects(key);
                 string selectedFaction=canvas.FactionFilter;factionFilter.Items.Clear();factionFilter.Items.Add("All / unassigned");if(reply.Forces!=null)factionFilter.Items.AddRange(reply.Forces.Factions.Cast<object>().ToArray());factionFilter.SelectedItem=reply.Forces==null?null:reply.Forces.Factions.FirstOrDefault(f=>f.Key==selectedFaction);if(factionFilter.SelectedIndex<0)factionFilter.SelectedIndex=0;
-                SelectMapRow(key);
+                if(starts.Active){SyncStartSelection();Text="tvtLobby | Mission Editor — Map"+(dirty||freezeDirty||starts.Dirty?" *":"");}else SelectMapRow(key);
                 status.Text=(reply.Message??"")+"\n"+reply.WorldPath+" · "+reply.BackgroundStatus+" · "+topologyStatus;
                 if(String.IsNullOrEmpty(reply.Background)&&reply.BackgroundStatus=="Preparing terrain image"&&imageRetries<5)imageTimer.Start();else imageTimer.Stop();
                 return true;
@@ -273,6 +308,6 @@ namespace TvtLobby.MissionEditor
             catch(Exception error){status.Text=error.Message;connectionFailed=true;return false;}
             finally{busy=false;if(!IsDisposed)UpdateConnection();}
         }
-        protected override void Dispose(bool disposing){if(disposing){imageTimer.Dispose();if(assets!=null)assets.Dispose();if(topology!=null)topology.Dispose();}base.Dispose(disposing);}
+        protected override void Dispose(bool disposing){if(disposing){imageTimer.Dispose();mapHelp.Dispose();if(assets!=null)assets.Dispose();if(topology!=null)topology.Dispose();}base.Dispose(disposing);}
     }
 }

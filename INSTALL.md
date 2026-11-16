@@ -2,7 +2,7 @@
 
 Download the Mission Editor ZIP from [GitHub Releases](https://github.com/Drewmaster/tvtLobby-MissionEditor/releases/latest).
 
-**Use Mission Editor 1.0.9 with tvtLobby 1.0.9.** Update both for this release and restart Workbench. Later addon updates only need a new editor if Workbench asks for one.
+**Use Mission Editor 1.0.10 with tvtLobby 1.0.10.** Update both for this release and restart Workbench. Later addon updates only need a new editor if Workbench asks for one.
 
 1. Open your saved mission in Workbench with **tvtLobby** enabled as a dependency.
 2. Click **tvtLobby Mission Editor** in the World Editor toolbar or select **Plugins → tvtLobby: Mission Editor**. In the dialog, click **Open install folder**.
@@ -24,6 +24,7 @@ With earlier addon versions, open the install folder and replace **tvtLobby-Miss
 
 | tvtLobby addon | Mission Editor package |
 | --- | --- |
+| 1.0.10 | 1.0.10 |
 | 1.0.9 | 1.0.9 |
 | 1.0.8 | [1.0.7](https://github.com/Drewmaster/tvtLobby-MissionEditor/releases/tag/v1.0.7) |
 | 1.0.5–1.0.7 | [1.0.5](https://github.com/Drewmaster/tvtLobby-MissionEditor/releases/tag/v1.0.5) |

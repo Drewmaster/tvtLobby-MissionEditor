@@ -25,6 +25,9 @@ namespace TvtLobby.MissionEditor
         public event Action Changed;
         public event Action<string> Picked;
         public event Action<string> PositionChanged;
+        public event Action<Graphics,MapProjection> OverlayPaint;
+        public Func<MouseEventArgs,bool> OverlayMouseDown,OverlayMouseMove,OverlayMouseUp;
+        public Func<KeyEventArgs,bool> OverlayKeyDown;
         private Bitmap terrain;
         private string terrainPath;
         private bool panning, moving;
@@ -90,6 +93,7 @@ namespace TvtLobby.MissionEditor
             var drawRows=Scene==null?new System.Collections.Generic.List<MapRow>():Scene.Rows.Select(r=>Draft!=null&&r.Key==Draft.Key?Draft:r).ToList();
             if(Draft!=null&&String.IsNullOrEmpty(Draft.Key))drawRows.Add(Draft);
             foreach(var row in MapOrder.FrontToBack(drawRows).AsEnumerable().Reverse())DrawRow(g,row,row==Draft);
+            if(OverlayPaint!=null)OverlayPaint(g,Projection);
             g.DrawString("N ↑   ·   metres",Font,Brushes.White,12,Height-28);
         }
         bool VisibleRow(MapRow row)
@@ -243,6 +247,7 @@ namespace TvtLobby.MissionEditor
             base.OnMouseDown(e);Focus();previous=e.Location;lastWorld=Projection.World(e.Location);
             if(e.Button==MouseButtons.Right||e.Button==MouseButtons.Middle) { panning=true;Capture=true;return; }
             if(e.Button!=MouseButtons.Left) return;
+            if(OverlayMouseDown!=null&&OverlayMouseDown(e))return;
             if(Draft!=null&&!Locked)
             {
                 if(Drawing)
@@ -284,17 +289,19 @@ namespace TvtLobby.MissionEditor
             base.OnMouseMove(e);MapPoint world=Projection.World(e.Location);
             if(PositionChanged!=null) PositionChanged(String.Format(CultureInfo.InvariantCulture,"X {0:0.00} · Z {1:0.00}",world.X,world.Z));
             if(panning){Projection.CenterX-=(e.X-previous.X)/Projection.PixelsPerMetre;Projection.CenterZ+=(e.Y-previous.Y)/Projection.PixelsPerMetre;Invalidate();}
+            else if(OverlayMouseMove!=null&&OverlayMouseMove(e)){}
             else if(Draft!=null&&!Locked&&dragVertex>=0){Draft.Points[dragVertex].X=world.X;Draft.Points[dragVertex].Z=world.Z;NotifyChange();}
             else if(Draft!=null&&!Locked&&moving){foreach(var p in Draft.Points){p.X+=world.X-lastWorld.X;p.Z+=world.Z-lastWorld.Z;}NotifyChange();}
             previous=e.Location;lastWorld=world;
         }
-        protected override void OnMouseUp(MouseEventArgs e) {base.OnMouseUp(e);panning=moving=false;dragVertex=-1;Capture=false;}
+        protected override void OnMouseUp(MouseEventArgs e) {if(OverlayMouseUp!=null)OverlayMouseUp(e);base.OnMouseUp(e);panning=moving=false;dragVertex=-1;Capture=false;}
         protected override void OnMouseCaptureChanged(EventArgs e) {base.OnMouseCaptureChanged(e);if(!Capture){panning=moving=false;dragVertex=-1;}}
         protected override void OnMouseWheel(MouseEventArgs e) {Projection.Zoom(e.Location,Math.Pow(1.2,e.Delta/120.0));Invalidate();}
         protected override bool IsInputKey(Keys key) {return key==Keys.Delete||key==Keys.Enter||key==Keys.Escape||base.IsInputKey(key);}
         protected override void OnKeyDown(KeyEventArgs e)
         {
             base.OnKeyDown(e);
+            if(OverlayKeyDown!=null&&OverlayKeyDown(e)){e.Handled=true;return;}
             if(e.KeyCode==Keys.Enter){Drawing=false;Invalidate();}
             if(e.KeyCode==Keys.Escape){Drawing=false;panning=moving=false;dragVertex=-1;Capture=false;Invalidate();}
             if(e.KeyCode==Keys.Delete&&!Locked&&Draft!=null&&SelectedVertex>=0)

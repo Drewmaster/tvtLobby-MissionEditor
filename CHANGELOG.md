@@ -1,5 +1,17 @@
 # Mission Editor changelog
 
+## 1.0.10
+
+- Load buildings, roads and other map details from packed Workshop terrains.
+- Fix map loading with mixed numeric and boolean mission fields.
+- Add battlefield cleanup controls in Advanced settings.
+- Place random-start points directly on the map, then assign groups, vehicles, factions, objects or combinations in the sidebar.
+- Store start points as prefabs in a separate world layer; moving them changes the destination, and deleting the last allowed point restores authored starts.
+- Keep factions in their authored formation and automatically move linked vehicles with their groups.
+- Choose independent selection or distribution without repeats for the whole mission, preview the result and apply all edits together.
+
+Use with **tvtLobby 1.0.10**. Update the addon, restart Workbench and replace the editor folder with the 1.0.10 ZIP when prompted. Missions and drafts are kept separately.
+
 ## 1.0.9
 
 - Check the loaded addon identity when connecting, before opening mission data.

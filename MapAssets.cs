@@ -33,13 +33,24 @@ namespace TvtLobby.MissionEditor
         public MapAssets(MapReply reply)
         {
             roots.AddRange(reply.AddonRoots??new List<string>());
-            if(!String.IsNullOrEmpty(reply.AddonDirectory)&&Directory.Exists(reply.AddonDirectory))roots.AddRange(Directory.GetDirectories(reply.AddonDirectory));
+            // Launch roots may be comma-separated, and may name either an
+            // addon itself or a directory containing several installed addons.
+            foreach(string root in (reply.AddonDirectory??"").Trim('"').Split(','))AddRoot(root);
             if(!String.IsNullOrEmpty(reply.WorkbenchExecutable))
             {
                 var wb=new DirectoryInfo(Path.GetDirectoryName(reply.WorkbenchExecutable));
-                string addons=Path.Combine(wb.Parent.Parent.FullName,"Arma Reforger","addons");
-                if(Directory.Exists(addons))roots.AddRange(Directory.GetDirectories(addons));
+                if(wb.Parent!=null&&wb.Parent.Parent!=null)AddRoot(Path.Combine(wb.Parent.Parent.FullName,"Arma Reforger","addons"));
             }
+            using(var key=Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Steam App 1874880"))
+            {
+                string installed=key==null?null:key.GetValue("InstallLocation") as string;
+                if(!String.IsNullOrEmpty(installed))AddRoot(Path.Combine(installed,"addons"));
+            }
+        }
+        void AddRoot(string path)
+        {
+            path=path.Trim().Trim('"');if(!Directory.Exists(path))return;
+            roots.Add(path);roots.AddRange(Directory.GetDirectories(path));
         }
         public static string Relative(string resource)
         {
@@ -53,7 +64,7 @@ namespace TvtLobby.MissionEditor
             string relative=Relative(resource);
             foreach(string root in roots.Distinct(StringComparer.OrdinalIgnoreCase))
             {string full=Path.Combine(root,relative);try{MapArchive.Read(full);resolved[resource]=full;return full;}catch(FileNotFoundException){}}
-            throw new FileNotFoundException("IconResource unavailable: "+resource);
+            throw new FileNotFoundException("Map resource unavailable in the loaded addons: "+resource);
         }
         public Bitmap Cached(string resource,string quad=""){lock(images){Bitmap image;return images.TryGetValue(resource+"|"+quad,out image)?image:null;}}
         public Bitmap Tinted(string resource,Color color)

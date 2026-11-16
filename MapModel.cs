@@ -24,22 +24,31 @@ namespace TvtLobby.MissionEditor
     }
     public static class MapWire
     {
-        // Enfusion RegAll serializes script bools as 0/1; normalize only schema bool fields.
+        // Enfusion RegAll serializes script bools as 0/1. Use the destination
+        // type: names such as Enabled also belong to integer settings, and
+        // empty arrays may be omitted from the native response.
         public static MapReply Read(string text)
         {
-            var json=new JavaScriptSerializer{MaxJsonLength=16*1024*1024};object value=json.DeserializeObject(text);Normalize(value);
+            var json=new JavaScriptSerializer{MaxJsonLength=16*1024*1024};object value=Normalize(json.DeserializeObject(text),typeof(MapReply));
             return json.ConvertToType<MapReply>(value);
         }
-        private static void Normalize(object value)
+        private static object Normalize(object value,Type type)
         {
+            if(value==null)return null;
+            if(type==typeof(bool))return value is bool?value:Convert.ToInt32(value)!=0;
             var map=value as Dictionary<string,object>;
             if(map!=null)
             {
-                foreach(string field in new[]{"Ok","ReadOnly","CanMoveLayer","Enabled","InitiallyVisible","Follow","KillAfterDeadline","DuringFreeze","AfterFreeze","ShowMap"})
-                    if(map.ContainsKey(field)&&!(map[field] is bool))map[field]=Convert.ToInt32(map[field])!=0;
-                foreach(object child in map.Values)Normalize(child);
+                foreach(var property in type.GetProperties())
+                {
+                    object child;
+                    if(property.CanWrite&&map.TryGetValue(property.Name,out child))map[property.Name]=Normalize(child,property.PropertyType);
+                }
             }
-            var array=value as object[];if(array!=null)foreach(object child in array)Normalize(child);
+            var array=value as object[];
+            if(array!=null&&type.IsGenericType&&type.GetGenericTypeDefinition()==typeof(List<>))
+                for(int i=0;i<array.Length;i++)array[i]=Normalize(array[i],type.GetGenericArguments()[0]);
+            return value;
         }
     }
     public sealed class MapPoint
@@ -102,6 +111,8 @@ namespace TvtLobby.MissionEditor
     }
     public sealed class MapReply
     {
+        public int RandomStartsVersion{get;set;} public string RandomStartsProblem{get;set;}
+        public RandomStartData RandomStarts{get;set;} public List<StartObject> StartObjects{get;set;}
         public MapReply() { Objectives=new List<EndChoice>();Icons=new List<MapIcon>(); Colors=new List<string>(); AddonRoots=new List<string>(); Rows = new List<MapRow>(); BackgroundCandidates = new List<string>(); }
         public List<EndChoice> Objectives{get;set;}
         public List<MapIcon> Icons {get;set;} public List<string> Colors {get;set;} public List<string> AddonRoots {get;set;}

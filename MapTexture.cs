@@ -26,31 +26,9 @@ namespace TvtLobby.MissionEditor
                 try {return Decode(candidate);}
                 catch(FileNotFoundException) { }
             }
-            // Packed vanilla mounts have no absolute filename in Workbench. Resolve
-            // their installed addon directory, not a machine-specific drive or asset copy.
-            var roots=new System.Collections.Generic.List<string>();
-            if(!String.IsNullOrEmpty(reply.AddonDirectory))roots.Add(reply.AddonDirectory.Trim('"'));
-            if(!String.IsNullOrEmpty(reply.WorkbenchExecutable))
-            {
-                var workbench=new DirectoryInfo(Path.GetDirectoryName(reply.WorkbenchExecutable));
-                if(workbench.Parent!=null&&workbench.Parent.Parent!=null)roots.Add(Path.Combine(workbench.Parent.Parent.FullName,"Arma Reforger","addons"));
-            }
-            using(var key=Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Steam App 1874880"))
-            {
-                string installed=key==null?null:key.GetValue("InstallLocation") as string;
-                if(!String.IsNullOrEmpty(installed))roots.Add(Path.Combine(installed,"addons"));
-            }
-            string relative=(reply.BackgroundResource??"").Replace('/',Path.DirectorySeparatorChar);
-            if(Path.IsPathRooted(relative)||relative.Split(Path.DirectorySeparatorChar).Contains(".."))throw new InvalidDataException("Invalid map resource path.");
-            foreach(string root in roots)
-            {
-                if(!Directory.Exists(root))continue;
-                foreach(string addon in Directory.GetDirectories(root))
-                {
-                    try{return Decode(Path.Combine(addon,relative));}catch(FileNotFoundException){ }
-                }
-            }
-            throw new FileNotFoundException("The map texture was not found in the world's loaded addons.");
+            // Terrain, topology and symbols must use the same loaded addon roots,
+            // including packed Workshop dependencies and their override order.
+            using(var assets=new MapAssets(reply))return Decode(assets.Resolve(reply.BackgroundResource));
         }
         private static int Int(byte[] bytes,int offset) { return BitConverter.ToInt32(bytes,offset); }
         private static string Tag(byte[] bytes,int offset) {return Encoding.ASCII.GetString(bytes,offset,4);}
