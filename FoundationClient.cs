@@ -121,6 +121,8 @@ namespace TvtLobby.MissionEditor
         public ObjectivesData Objectives { get; set; }
         public BriefingData Briefing { get; set; }
         public FactionFile FactionFile { get; set; }
+        public MissionMods Mods {get;set;}
+        public ModScan ModScan {get;set;}
         public List<FoundationItem> Items { get; set; }
         public List<string> Issues { get; set; }
     }
@@ -234,8 +236,8 @@ namespace TvtLobby.MissionEditor
             reply.Objectives.Choices=choices;
             catalog=choices;catalogRevision=reply.CatalogRevision;catalogWorld=reply.WorldSession;
         }
-        public FoundationReply Execute(string operation,FoundationReply view,MissionDetails details,ForcesEdit edit=null,MissionSettings settings=null,AdvancedSettings advanced=null,MissionEndData missionEnd=null,ObjectiveEdit objective=null,BriefingEdit briefing=null,FreezeZoneSettings freezeZones=null)
-        {return ExecuteCore(operation,view,details,edit,settings,advanced,missionEnd,objective,briefing,freezeZones,true);}
+        public FoundationReply Execute(string operation,FoundationReply view,MissionDetails details,ForcesEdit edit=null,MissionSettings settings=null,AdvancedSettings advanced=null,MissionEndData missionEnd=null,ObjectiveEdit objective=null,BriefingEdit briefing=null,FreezeZoneSettings freezeZones=null,MissionMods mods=null)
+        {return ExecuteCore(operation,view,details,edit,settings,advanced,missionEnd,objective,briefing,freezeZones,mods,true);}
         // A second window/read renews Workbench's global revision even without an edit.
         // Only retry a rejected write, once, after comparing the complete relevant data.
         static object GuardData(string operation,FoundationReply view)
@@ -244,16 +246,17 @@ namespace TvtLobby.MissionEditor
                 case "apply":return view.Details;
                 case "settings_apply":return view.Settings;
                 case "advanced_apply":return view.Advanced;
+                case "mods_apply":return view.Mods;
                 case "freezezones_apply":return view.FreezeZones;
                 case "end_apply":return view.MissionEnd;
                 case "objective_apply":case "objective_remove":if(view.Objectives!=null)view.Objectives.Normalize();return view.Objectives;
                 case "brief_batch":case "brief_apply":case "brief_remove":case "brief_up":case "brief_down":case "brief_move":if(view.Briefing!=null)view.Briefing.Normalize();return view.Briefing;
                 case "group_batch":case "group_update":case "group_move":case "group_order":case "faction_update":return view.Forces;
-                case "save":return new object[]{view.Details,view.Forces,view.Settings,view.Advanced,view.FreezeZones,view.MissionEnd,view.Objectives,view.Briefing};
+                case "save":return new object[]{view.Details,view.Forces,view.Settings,view.Advanced,view.FreezeZones,view.MissionEnd,view.Objectives,view.Briefing,view.Mods};
                 default:return null;
             }
         }
-        private FoundationReply ExecuteCore(string operation,FoundationReply view,MissionDetails details,ForcesEdit edit,MissionSettings settings,AdvancedSettings advanced,MissionEndData missionEnd,ObjectiveEdit objective,BriefingEdit briefing,FreezeZoneSettings freezeZones,bool retryStale)
+        private FoundationReply ExecuteCore(string operation,FoundationReply view,MissionDetails details,ForcesEdit edit,MissionSettings settings,AdvancedSettings advanced,MissionEndData missionEnd,ObjectiveEdit objective,BriefingEdit briefing,FreezeZoneSettings freezeZones,MissionMods mods,bool retryStale)
         {
             if(operation!="snapshot"&&operation!="validate")
                 foreach(var entry in fingerprints)if(Hash(entry.Key)!=entry.Value)
@@ -277,7 +280,7 @@ namespace TvtLobby.MissionEditor
                 PrepareFactionFile(prepared);view=prepared;
             }
             var request=new Dictionary<string,object>{{"APIFunc","tvtLobby_MissionFoundation"},{"Token",session.Token},{"Operation",operation},
-                {"ExpectedWorld",view==null?"":view.WorldPath},{"ViewRevision",view==null?"":view.ViewRevision},{"PagedChoices",1},{"KnownCatalogRevision",catalogRevision},{"Details",details},{"Edit",edit},{"Settings",settings},{"FreezeZones",freezeZones},{"Advanced",advanced},{"MissionEnd",missionEnd},{"Objective",objective},{"BriefingEdit",briefing}};
+                {"ExpectedWorld",view==null?"":view.WorldPath},{"ViewRevision",view==null?"":view.ViewRevision},{"PagedChoices",1},{"KnownCatalogRevision",catalogRevision},{"Details",details},{"Edit",edit},{"Settings",settings},{"FreezeZones",freezeZones},{"Advanced",advanced},{"MissionEnd",missionEnd},{"Objective",objective},{"BriefingEdit",briefing},{"Mods",mods}};
             string saveJournal=operation=="save"?EditorSaveRecovery.Begin(view):null;
             FoundationReply reply;
             try
@@ -306,13 +309,13 @@ namespace TvtLobby.MissionEditor
                 object guard=GuardData(operation,view);
                 if(guard!=null){
                     string expected=EditorJson.Serialize(guard);
-                    var fresh=ExecuteCore("snapshot",view,null,null,null,null,null,null,null,null,false);
+                    var fresh=ExecuteCore("snapshot",view,null,null,null,null,null,null,null,null,null,false);
                     if(fresh.Ok!=1)return fresh;
                     if(view.WorldPath!=fresh.WorldPath||view.WorldSession!=fresh.WorldSession||view.HeaderPath!=fresh.HeaderPath||view.RulesPath!=fresh.RulesPath)
                         return new FoundationReply{Code="WORLD_CHANGED",Message="The mission changed in Workbench. Nothing was applied or saved; your draft is kept. Refresh to review the current world."};
                     if(expected!=EditorJson.Serialize(GuardData(operation,fresh)))
                         return new FoundationReply{Code="VALUE_CHANGED",Message="These settings or their references changed in Workbench. Nothing was applied or saved; your draft is kept. Refresh to review the changes."};
-                    return ExecuteCore(operation,fresh,details,edit,settings,advanced,missionEnd,objective,briefing,freezeZones,false);
+                    return ExecuteCore(operation,fresh,details,edit,settings,advanced,missionEnd,objective,briefing,freezeZones,mods,false);
                 }
             }
             if(reply.Ok==1)

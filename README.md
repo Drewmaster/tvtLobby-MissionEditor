@@ -2,11 +2,11 @@
 
 Use Mission Editor to set up and edit your tvtLobby missions in Arma Reforger Workbench.
 
-**[Download Mission Editor 1.0.10 (ZIP)](https://github.com/Drewmaster/tvtLobby-MissionEditor/releases/download/v1.0.10/tvtLobby-MissionEditor-1.0.10.zip)**
+**[Download Mission Editor 1.0.11 (ZIP)](https://github.com/Drewmaster/tvtLobby-MissionEditor/releases/download/v1.0.11/tvtLobby-MissionEditor-1.0.11.zip)**
 
-For **tvtLobby 1.0.10**. Update both the addon and editor for this release, then restart Workbench. Later addon updates can keep using this editor unless Workbench asks for a new package.
+For **tvtLobby 1.0.11**. Update both the addon and editor for this release, then restart Workbench. Later addon updates can keep using this editor unless Workbench asks for a new package.
 
-This release adds random starts on the mission map, restores details on Workshop terrains and exposes battlefield cleanup settings.
+This release adds mission mod selection with clipboard import/export, publishes settings for Creating and exposes spectator map visibility controls. New missions enable overhead spectator markers by default, with a personal toggle within mission permissions.
 
 ## Install
 
@@ -19,6 +19,25 @@ This release adds random starts on the mission map, restores details on Workshop
 Workbench and Mission Editor connect on the same PC. Your default firewall and router settings are sufficient.
 
 [Installation help](INSTALL.md) · [Changelog](CHANGELOG.md) · [All releases](https://github.com/Drewmaster/tvtLobby-MissionEditor/releases) · [Developer notes](DEVELOPMENT.md)
+
+## Mods and Creating settings
+
+Available with tvtLobby 1.0.11 and Mission Editor 1.0.11.
+
+Open **Mods** to prepare the requirements of this mission:
+
+1. **Scan resources** finds addons referenced by the mission's resources. Review the results; addons selected only by scripts may need adding manually.
+2. **Loaded addons...** lets you select addons enabled in the current Workbench session, including **Open with mods**.
+3. **Add folder...** reads a local or Workshop addon folder containing `addon.gproj` or `ServerData.json`.
+4. Add or remove entries, check the Workbench status and optionally edit required versions. Click **Apply**, then **Save mission**. Removed entries stay excluded from subsequent scans until you restore them or add them explicitly.
+5. **Import from clipboard** reads a copied mod list. It adds new mods and updates names and versions for matching IDs, keeping other entries. Review the draft, then click **Apply** and **Save mission**. Invalid input leaves the list unchanged.
+6. **Export to clipboard** copies comma-separated `modId`, `name`, `version` objects, matching the game's export without outer `[]`. Paste them inside `game.mods` in the server configuration. The export includes tvtLobby and the mission pack automatically and uses your current draft.
+
+Import accepts this same format or a complete JSON array. Repeated IDs create one entry; the last imported entry supplies its name and version.
+
+This list does not add project dependencies or copy addon files. Different known versions and missing mods produce a warning in Creating; the administrator can still attempt a launch. An incomplete resource scan preserves existing requirements.
+
+**Save mission** also publishes the mission's terrain name and public settings for Creating. Administrators can adjust the settings before launching; changes apply to that launch only. Save existing missions once with the updated addon, then publish the mission pack to expose this information on servers. If the Map column says **Not specified**, the scenario is missing its saved terrain name; this also applies to modded terrains. The packaged Crossroads and Borrowed Ground missions already include this information.
 
 ## Random starts
 

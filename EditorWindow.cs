@@ -35,6 +35,7 @@ namespace TvtLobby.MissionEditor
         private readonly FactionCardsPage factionsPage; private readonly ForcesPage groupsPage;
         private readonly MissionSettingsPage settingsPage;
         private readonly AdvancedSettingsPage advancedPage;
+        private readonly ModsPage modsPage;
         private readonly FreezeZonesPage freezeZonesPage;
         private readonly MissionEndPage endPage;
         private readonly ObjectivesPage objectivesPage;
@@ -54,7 +55,7 @@ namespace TvtLobby.MissionEditor
             state.AutoSize=true;state.Font=EditorTheme.Font(8);state.ForeColor=EditorTheme.Green;state.Margin=new Padding(6,12,16,0);header.Controls.Add(state);
             headerActions.AutoSize=true;headerActions.WrapContents=false;headerActions.Controls.Add(Button("Files & setup",()=>ShowPage("Files & setup")));save=Button("Save mission",async()=>await SaveMission(),true);headerActions.Controls.Add(save);header.Controls.Add(headerActions);frame.Controls.Add(header,1,0);
             navigation.Dock=DockStyle.Fill;navigation.FlowDirection=FlowDirection.TopDown;navigation.WrapContents=false;navigation.AutoScroll=true;navigation.Padding=new Padding(12,20,12,0);navigation.BackColor=Color.FromArgb(27,32,36);
-            AddNavCaption("START");AddNav("Mission guide");AddNavCaption("MISSION SETUP");AddNav("Files & setup");AddNav("Mission details");AddNav("Factions & alliances");AddNav("Mission settings");AddNav("Advanced settings");AddNavCaption("SCENARIO");AddNav("Groups & vehicles");AddNav("Map, markers & zones");AddNav("Objectives");AddNav("Mission end");AddNav("Briefing");AddNavCaption("REVIEW");AddNav("Validation");frame.Controls.Add(navigation,0,1);
+            AddNavCaption("START");AddNav("Mission guide");AddNavCaption("MISSION SETUP");AddNav("Files & setup");AddNav("Mission details");AddNav("Factions & alliances");AddNav("Mission settings");AddNav("Advanced settings");AddNav("Mods");AddNavCaption("SCENARIO");AddNav("Groups & vehicles");AddNav("Map, markers & zones");AddNav("Objectives");AddNav("Mission end");AddNav("Briefing");AddNavCaption("REVIEW");AddNav("Validation");frame.Controls.Add(navigation,0,1);
             var main=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=3,Margin=Padding.Empty};main.RowStyles.Add(new RowStyle(SizeType.Absolute,55));main.RowStyles.Add(new RowStyle(SizeType.Absolute,98));main.RowStyles.Add(new RowStyle(SizeType.Percent,100));
             var toolsRow=new Panel{Dock=DockStyle.Fill};breadcrumb=EditorTheme.Label("MISSION GUIDE",8,EditorTheme.Muted);breadcrumb.Location=new Point(24,20);toolsRow.Controls.Add(breadcrumb);toolbar.Dock=DockStyle.Right;toolbar.AutoSize=true;toolbar.WrapContents=false;toolbar.Padding=new Padding(0,10,18,0);toolbar.Controls.Add(Button("Undo",async()=>await Execute("undo")));toolbar.Controls.Add(Button("Redo",async()=>await Execute("redo")));toolbar.Controls.Add(Button("Refresh",async()=>await Execute("snapshot")));toolbar.Controls.Add(Button("Validate",async()=>{await Execute("validate");ShowPage("Validation");}));toolsRow.Controls.Add(toolbar);
             SizeChanged+=(s,e)=>{main.RowStyles[0].Height=55;main.RowStyles[1].Height=Height<820?76:98;};var headingBox=EditorTheme.Stack();headingBox.Padding=new Padding(24,22,24,0);heading.Font=EditorTheme.Font(18,FontStyle.Bold);heading.AutoSize=true;heading.UseMnemonic=false;EditorTheme.Add(headingBox,heading);subtitle=EditorTheme.Label("",9,EditorTheme.Muted);EditorTheme.Add(headingBox,subtitle);
@@ -67,6 +68,7 @@ namespace TvtLobby.MissionEditor
             pages["Mission settings"]=settingsPage;
             advancedPage=new AdvancedSettingsPage(ExecuteAdvanced);advancedPage.DraftChanged+=UpdateActions;
             pages["Advanced settings"]=advancedPage;
+            modsPage=new ModsPage(ExecuteMods);modsPage.DraftChanged+=UpdateActions;pages["Mods"]=modsPage;
             freezeZonesPage=new FreezeZonesPage(ExecuteFreezeZones,OpenMap,()=>settingsPage.SelectSection("Freeze & readiness"));freezeZonesPage.DraftChanged+=UpdateActions;settingsPage.AddFreezeZones(freezeZonesPage);
             endPage=new MissionEndPage(ExecuteEnd);endPage.DraftChanged+=UpdateActions;pages["Mission end"]=endPage;
             objectivesPage=new ObjectivesPage(ExecuteObjective,()=>ShowPage("Map, markers & zones"));objectivesPage.DraftChanged+=UpdateActions;pages["Objectives"]=objectivesPage;
@@ -82,7 +84,7 @@ namespace TvtLobby.MissionEditor
                 // Returning from World Editor is not an implicit world scan.
                 // Refresh is explicit; native revision/value guards protect Apply.
             }
-            FormClosing+=(s,e)=>{SaveDraft();if(busy||saving||!factionsPage.CanLeave()||!groupsPage.CanLeave()||!settingsPage.CanLeave()||!freezeZonesPage.CanLeave()||!advancedPage.CanLeave()||!endPage.CanLeave()||!objectivesPage.CanLeave()||!briefingPage.CanLeave())e.Cancel=true;};
+            FormClosing+=(s,e)=>{SaveDraft();if(busy||saving||!factionsPage.CanLeave()||!groupsPage.CanLeave()||!settingsPage.CanLeave()||!freezeZonesPage.CanLeave()||!advancedPage.CanLeave()||!endPage.CanLeave()||!objectivesPage.CanLeave()||!briefingPage.CanLeave()||!modsPage.CanLeave())e.Cancel=true;};
         }
         private static Label Label(string text,float size=10,Color? color=null)
         {return new EditorLabel{Text=text,UseMnemonic=false,Font=new Font("Segoe UI",size),ForeColor=color??Color.Gainsboro,Dock=DockStyle.Fill,AutoSize=true,MaximumSize=new Size(850,0),Margin=new Padding(0,0,0,12)};}
@@ -146,7 +148,7 @@ namespace TvtLobby.MissionEditor
             content.Enabled=navigation.Enabled=headerActions.Enabled=connected;
             if(map!=null&&!map.IsDisposed)map.Enabled=connected;
             if(groups!=null&&!groups.IsDisposed)groups.Enabled=connected;
-            bool forceDraft=(factionsPage!=null&&factionsPage.HasDraft)||(groupsPage!=null&&groupsPage.HasDraft)||(settingsPage!=null&&settingsPage.HasDraft)||(advancedPage!=null&&advancedPage.HasDraft);
+            bool forceDraft=(modsPage!=null&&modsPage.HasDraft)||(factionsPage!=null&&factionsPage.HasDraft)||(groupsPage!=null&&groupsPage.HasDraft)||(settingsPage!=null&&settingsPage.HasDraft)||(advancedPage!=null&&advancedPage.HasDraft);
             forceDraft=forceDraft||(freezeZonesPage!=null&&freezeZonesPage.HasDraft)||(endPage!=null&&endPage.HasDraft)||(objectivesPage!=null&&objectivesPage.HasDraft)||(briefingPage!=null&&briefingPage.HasDraft);
             save.Enabled=connected&&!conflict;save.Text=dirty||forceDraft?"Apply & save mission":"Save mission";create.Enabled=connected&&view.CanCreate==1;apply.Enabled=connected&&view.Ready==1&&dirty&&!conflict;
             restore.Enabled=connected&&File.Exists(MissionDrafts.PathFor(view.WorldPath));
@@ -161,6 +163,7 @@ namespace TvtLobby.MissionEditor
             if(freezeZonesPage!=null)freezeZonesPage.Enabled=connected&&view.Ready==1;
             if(settingsPage!=null)settingsPage.Enabled=connected&&view.Ready==1;
             if(advancedPage!=null)advancedPage.Enabled=connected&&view.Ready==1;
+            if(modsPage!=null)modsPage.Enabled=connected&&view.Ready==1&&view.Mods!=null;
             if(endPage!=null)endPage.Enabled=connected&&view.Ready==1;
             if(briefingPage!=null)briefingPage.Enabled=connected&&view.Ready==1;
             if(objectivesPage!=null)objectivesPage.Enabled=connected&&view.Ready==1;
@@ -180,6 +183,7 @@ namespace TvtLobby.MissionEditor
             factionsPage.Accept(reply,replaceFields||!same);groupsPage.Accept(reply,replaceFields||!same);
             settingsPage.Accept(reply,replaceFields||!same);
             advancedPage.Accept(reply,replaceFields||!same);
+            modsPage.Accept(reply,replaceFields||!same);
             freezeZonesPage.Accept(reply,replaceFields||!same);
             endPage.Accept(reply,replaceFields||!same);
             objectivesPage.Accept(reply,replaceFields||!same);
@@ -223,6 +227,18 @@ namespace TvtLobby.MissionEditor
             busy=true;UpdateActions();
             try {var result=await Task.Run(()=>client.Execute("freezezones_apply",view,null,freezeZones:draft));if(IsDisposed)return result;if(result.Ok==1){freezeZonesPage.Applied();AcceptSnapshot(result,false);}status.Text=result.Message;return result;}
             catch(Exception e){return new FoundationReply{Message=e.Message};}finally{busy=false;if(!IsDisposed)UpdateActions();}
+        }
+        private async Task<FoundationReply> ExecuteMods(string operation,MissionMods draft)
+        {
+            if(busy||view==null)return new FoundationReply{Message="Wait for the current operation."};
+            busy=true;UpdateActions();
+            try {
+                var result=await Task.Run(()=>client.Execute(operation,view,null,mods:draft));
+                if(IsDisposed)return result;
+                if(result.Ok==1){if(operation=="mods_apply")modsPage.Applied();AcceptSnapshot(result,false);}
+                status.Text=result.Message;return result;
+            } catch(Exception e){if(!IsDisposed)status.Text=e.Message;return new FoundationReply{Message=e.Message};}
+            finally{busy=false;if(!IsDisposed)UpdateActions();}
         }
         private async Task<FoundationReply> ExecuteAdvanced(AdvancedSettings draft)
         {
@@ -306,6 +322,7 @@ namespace TvtLobby.MissionEditor
         List<PendingEdit> PendingEdits()
         {
             var pending=new List<PendingEdit>();
+            if(modsPage.HasDraft)pending.Add(new PendingEdit{Page="Mods",Error=()=>modsPage.DraftError,Apply=modsPage.ApplyPending});
             if(dirty)pending.Add(new PendingEdit{Page="Mission details",Error=()=>conflict?"Metadata changed in Workbench. Reload fields first.":ReadFields().Validate(view.Slots),Apply=async()=>{await Execute("apply");return !dirty;}});
             if(factionsPage.HasDraft)pending.Add(new PendingEdit{Page="Factions & alliances",Error=()=>factionsPage.DraftError,Apply=factionsPage.ApplyPending});
             if(groupsPage.HasDraft)pending.Add(new PendingEdit{Page="Groups & vehicles",Error=()=>groupsPage.DraftError,Apply=groupsPage.ApplyPending});

@@ -1,5 +1,14 @@
 # Mission Editor changelog
 
+## 1.0.11
+
+- Add a Mods page with resource scanning, loaded-addon selection, folder import and clipboard import/export in the game's mod-list format.
+- Publish mission settings for Creating when saving a mission.
+- Configure spectator map visibility for nobody, the spectator's faction or their group.
+- Enable spectator overhead markers by default, with a personal toggle within mission permissions.
+
+Use with **tvtLobby 1.0.11**. Update the addon, restart Workbench and replace the editor folder with the 1.0.11 ZIP when prompted. Later gameplay-only addon updates can keep using this package.
+
 ## 1.0.10
 
 - Load buildings, roads and other map details from packed Workshop terrains.

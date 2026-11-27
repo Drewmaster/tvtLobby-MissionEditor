@@ -10,8 +10,8 @@ using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
-[assembly: AssemblyFileVersion("1.0.10.0")]
-[assembly: AssemblyInformationalVersion("1.0.10")]
+[assembly: AssemblyFileVersion("1.0.11.0")]
+[assembly: AssemblyInformationalVersion("1.0.11")]
 
 namespace TvtLobby.MissionEditor
 {
@@ -111,7 +111,7 @@ namespace TvtLobby.MissionEditor
         public static string DescribeCompatibility(Session session)
         {
             string guidance = session != null && session.Protocol < EditorProtocol
-                ? "Update tvtLobby to 1.0.9 or a later compatible release, restart Workbench, and reopen Mission Editor."
+                ? "Update tvtLobby to 1.0.11 or a later compatible release, restart Workbench, and reopen Mission Editor."
                 : "Install the Mission Editor version requested by Workbench, then reopen it from Workbench.";
             string details = "Mission Editor: " + EditorVersion + " (protocol " + EditorProtocol + ")";
             if (session != null)
